@@ -58,3 +58,6 @@ sepsis-rag-assistant/
 │   ├── guidelines/       # Raw guideline PDFs
 │   └── processed/        # FAISS index + chunks/sources
 └── README.md             # Project documentation
+
+# Clone this repository
+git clone https://github.com/<your-username>/sepsis-rag-assistant.git
