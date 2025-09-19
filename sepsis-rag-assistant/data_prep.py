@@ -13,6 +13,7 @@ from typing import List, Tuple
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
+from PyPDF2 import PdfReader
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,30 +26,27 @@ class DocumentProcessor:
         self.encoder = SentenceTransformer(model_name)
         
     def load_documents(self, data_dir: str = "data") -> List[Tuple[str, str]]:
-        """Load documents from data directory.
         
-        Returns:
-            List of (text_content, source_path) tuples
-        """
         documents = []
-        data_path = Path(data_dir)
-        
+        guidelines_path = Path(data_dir)        
         # Look for text files
-        for file_path in data_path.rglob("*.txt"):
+        for file_path in guidelines_path.rglob("*.pdf"):
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read().strip()
-                if content:
-                    documents.append((content, str(file_path)))
-                    logger.info(f"Loaded: {file_path}")
+                reader = PdfReader(file_path)
+                content = ""
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        content += page_text + "\n"
+
+                if content.strip():
+                    documents.append((content.strip(), str(file_path)))
+                    logger.info(f"Successfully loaded and extracted text from: {file_path}")
             except Exception as e:
-                logger.warning(f"Failed to load {file_path}: {e}")
-        
-        # If no txt files found, create sample data
+                logger.warning(f"Failed to load or read {file_path}: {e}")
         if not documents:
-            logger.warning("No text files found. Creating sample sepsis data...")
-            documents = self._create_sample_data()
-        
+            logger.warning("No PDF documents were found. The RAG system will have no knowledge base.")
+    
         return documents
     
     def _create_sample_data(self) -> List[Tuple[str, str]]:
