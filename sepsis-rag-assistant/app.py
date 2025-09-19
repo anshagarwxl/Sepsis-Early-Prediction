@@ -138,3 +138,9 @@ if rag:
         with st.expander("Sources & Guidelines"):
             for i, s in enumerate(sorted(set(sources)), 1):
                 st.write(f"{i}. {s}")
+rag = SepsisRAG()
+question = st.text_input("Ask a sepsis-related question:")
+if question:
+    answer, sources = rag.query(question)
+    st.write(answer)
+    st.write("Sources:", sources)
