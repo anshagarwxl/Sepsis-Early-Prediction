@@ -1,4 +1,6 @@
 <<<<<<< HEAD
+=======
+<<<<<<< HEAD
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -24,110 +26,212 @@ st.set_page_config(
 # app.py
 # Sepsis RAG Assistant — Auth → Home (nebula hero) → Chat or Vitals (tabs)
 # Glassmorphism, responsive, back/home navigation, no blank pages
+>>>>>>> origin/main
 
-import os, io, json, math, time, pickle
-from datetime import datetime
+# app.py
+# Sepsis Risk Assistant — Dark Glassmorphism PRO
+# --------------------------------------------------------------
+# One-file Streamlit app with a premium dark-glass UI, animated hero,
+# KPI tiles, radial gauges, crisp charts, ML risk (optional model),
+# RAG assistant (optional rag_system.py), upload, duplicates, and export.
+#
+# Run:  streamlit run app.py
+# Reqs: streamlit, pandas, numpy, matplotlib, (optional) joblib, python-dotenv
+
+from __future__ import annotations
+
+import os
+import json
+import math
+import numbers
+import datetime as dt
+from pathlib import Path
+from typing import Dict, Any, Tuple, List
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit.components.v1 as components
 
-# ------------------------- Page & Theme ------------------------- #
-st.set_page_config(page_title="Sepsis RAG Assistant", page_icon="🩺", layout="wide")
+# ---- Optional libs (safe fallbacks) ----
+try:
+    import joblib
+except Exception:
+    joblib = None
 
-CSS = r"""
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+# -------------------- App Meta --------------------
+st.set_page_config(
+    page_title="Sepsis Risk Assistant",
+    page_icon="🩺",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+# Paths for optional ML pipeline
+MODEL_PATH = Path("models/knn_sepsis_model.joblib")
+META_PATH  = Path("models/meta.json")
+
+# -------------------- Global CSS / Theme --------------------
+GLASS_CSS = """
+<style>
 :root{
-  --bg1:#051428; --bg2:#0b0f18;
-  --glass: rgba(255,255,255,.05);
-  --glass-2: rgba(255,255,255,.04);
-  --stroke: rgba(255,255,255,.10);
-  --stroke-2: rgba(255,255,255,.12);
-  --fg: rgba(244,246,255,.95);
-  --muted: rgba(230,238,255,.60);
-  --accent:#7fd3ff;
-}
-body { background: radial-gradient(1200px 650px at 20% -10%, #1a2240 0%, var(--bg1) 40%) }
-.main .block-container{ max-width: 1200px; padding-top:.5rem; padding-bottom:1.2rem; }
-
-.small{ color:var(--muted); font-size:.92rem; }
-.card{
-  background: var(--glass); border:1px solid var(--stroke); border-radius:16px; padding:14px;
-  backdrop-filter: blur(10px) saturate(135%); -webkit-backdrop-filter: blur(10px) saturate(135%);
-  box-shadow: 0 10px 28px rgba(0,0,0,.35);
-}
-.gcard{
-  background: var(--glass-2); border:1px solid var(--stroke); border-radius:18px; padding:18px;
-  backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
-  box-shadow: 0 12px 36px rgba(0,0,0,.38);
-}
-.hero{
-  position: relative; overflow:hidden;
-  background: linear-gradient(145deg, rgba(8,12,28,.6), rgba(30,35,60,.35));
-  border:1px solid var(--stroke); border-radius:24px; padding:26px 22px;
-}
-.hero h1{ margin:0 0 8px; font-size:34px; }
-.hero p{ margin:0; color:var(--muted); }
-
-/* nebula canvas inside hero */
-.hero .nebula { position:absolute; inset:0; z-index:-1; opacity:.7; filter: blur(0px); }
-
-/* CTA tiles */
-.cta{
-  display:flex; gap:16px; flex-wrap:wrap; margin-top:18px;
-}
-.cta .tile{
-  flex: 1 1 300px;
-  padding:16px; border-radius:16px; border:1px solid var(--stroke-2);
-  background: linear-gradient(180deg, rgba(25,32,60,.45), rgba(18,24,45,.35));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 12px 26px rgba(0,0,0,.30);
-}
-.cta .title{ font-weight:900; font-size:18px; margin-bottom:6px; }
-.cta .sub{ color:var(--muted); font-size:.95rem; }
-.cta .btn-wrap{ margin-top:12px; }
-
-.stButton>button{
-  width:100%; color:#fff !important;
-  background:linear-gradient(180deg, #2b3b6a 0%, #182341 90%) !important;
-  border:1px solid #314066 !important;
-  border-radius:14px !important;
-  padding:10px 14px !important;
-  font-weight:800 !important;
-  box-shadow:0 8px 22px rgba(0,0,0,.25);
-}
-.stButton>button:hover{ transform: translateY(-1px); box-shadow:0 12px 28px rgba(0,0,0,.30); }
-
-/* Tabs */
-.stTabs [role="tablist"] { gap:8px; }
-.stTabs [role="tab"]{
-  padding:6px 10px;
-  background:rgba(255,255,255,.04);
-  border:1px solid var(--stroke) !important;
-  border-radius:10px !important;
-}
-.stTabs [aria-selected="true"]{
-  background:#16203a !important; border-color:#223055 !important; color:#eaf0ff !important; font-weight:800;
+  --bg-a: #0a0f1b;
+  --bg-b: #0b1220;
+  --bg-c: #0e1530;
+  --panel: rgba(255,255,255,.06);
+  --panel-2: rgba(255,255,255,.08);
+  --panel-3: rgba(255,255,255,.05);
+  --border: rgba(255,255,255,.12);
+  --ink: rgba(255,255,255,.98);
+  --muted: rgba(255,255,255,.70);
+  --green: #00d1a7;
+  --amber: #ffcc66;
+  --red: #ff6b6b;
+  --blue: #7fd3ff;
+  --violet: #a78bfa;
+  --pink: #ff9bd2;
 }
 
-/* KPI risk chips */
-.risk-badge{ display:inline-block; padding:.2rem .55rem; border-radius:.6rem; font-weight:800; font-size:.75rem }
-.risk-low { background:#10b98120;color:#10b981;border:1px solid #10b98150; }
-.risk-med { background:#f59e0b20;color:#f59e0b;border:1px solid #f59e0b50; }
-.risk-high{ background:#ef444420;color:#ef4444;border:1px solid #ef444450; }
+html, body, .stApp {
+  background: radial-gradient(80% 140% at 10% 10%, var(--bg-a) 0%, var(--bg-b) 55%, var(--bg-c) 100%);
+  color: var(--ink);
+}
 
-/* Auth layout */
-.auth-wrap { min-height: calc(100vh - 120px); display: grid; place-items: center; }
-.auth-card { width:100%; max-width:520px; }
+[data-testid="stSidebar"] > div {
+  background: var(--panel);
+  backdrop-filter: blur(12px) saturate(140%);
+  border-right: 1px solid var(--border);
+}
+
+.main .block-container {
+  padding-top: 0.8rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 18px 18px 16px 18px;
+  backdrop-filter: blur(14px) saturate(160%);
+  box-shadow: 0 12px 40px rgba(0,0,0,.35);
+}
+
+.tile {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+.soft {
+  background: var(--panel-3);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.kpi {
+  font-weight: 800;
+  font-size: 26px;
+}
+.kpi-sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.hr { height:1px; background:var(--border); margin: 10px 0 16px 0; }
+
+.pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: 12px;
+}
+.pill.low  { background: rgba(0,209,167,.12); color: var(--green); }
+.pill.med  { background: rgba(255,204,102,.14); color: var(--amber); }
+.pill.high { background: rgba(255,107,107,.14); color: var(--red); }
+.pill.ml   { background: rgba(127,211,255,.14); color: var(--blue); }
+
+h1, h2, h3 { color: var(--ink); }
+small, .muted { color: var(--muted); }
+
+.stButton>button {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--blue), var(--violet));
+  color: #06131f;
+  font-weight: 900;
+}
+
+a, a:visited { color: var(--blue) !important; text-decoration: none; }
+</style>
 """
-st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+st.markdown(GLASS_CSS, unsafe_allow_html=True)
 
-# tiny SVG background (doesn't push content)
-components.html("<div style='position:fixed;inset:0;z-index:-1;pointer-events:none'></div>", height=1)
+# -------------------- Animated Hero --------------------
+HERO = """
+<div style="position:relative;border-radius:24px;overflow:hidden;">
+  <div style="
+    position:absolute; inset:0; z-index:0; opacity:.45; pointer-events:none;
+    background:
+      radial-gradient(60% 60% at 10% 10%, rgba(127,211,255,.20) 0%, rgba(127,211,255,0) 60%),
+      radial-gradient(50% 50% at 90% 20%, rgba(167,139,250,.18) 0%, rgba(167,139,250,0) 60%),
+      radial-gradient(40% 40% at 70% 80%, rgba(255,155,210,.16) 0%, rgba(255,155,210,0) 60%);
+    filter: blur(24px);
+  "></div>
+  <div class="card" style="position:relative; z-index:1; border-radius:24px; padding:24px;">
+    <div style="display:flex; align-items:center; gap:18px;">
+      <div style="font-size:28px;">🩺</div>
+      <div>
+        <div style="font-weight:900; letter-spacing:.4px; font-size:26px;">Sepsis Risk Assistant</div>
+        <div class="muted" style="margin-top:2px;">Dark glassmorphism • Clinical scores + ML • RAG • Upload • Duplicates • Exports</div>
+      </div>
+      <div style="margin-left:auto;">
+        <span class="pill ml">Live Session</span>
+      </div>
+    </div>
+  </div>
+</div>
+"""
+st.markdown(HERO, unsafe_allow_html=True)
+st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
 
-PLOTLY_TEMPLATE = "plotly_dark"
+# -------------------- Session State --------------------
+SCHEMA = [
+    "Timestamp","Temperature","HeartRate","RespiratoryRate",
+    "SystolicBP","DiastolicBP","SpO2","WBC","GCS",
+    "Consciousness","Notes",
+    "NEWS2","NEWS2_Risk","qSOFA","qSOFA_Risk","SIRS","SIRS_Risk",
+    "ML_Prediction","ML_Prob","ML_Risk"
+]
+if "data" not in st.session_state:
+    st.session_state["data"] = pd.DataFrame(columns=SCHEMA)
 
+<<<<<<< HEAD
+# -------------------- ML Loader --------------------
+@st.cache_resource(show_spinner=False)
+def load_ml():
+    if joblib is None or not MODEL_PATH.exists() or not META_PATH.exists():
+        return None, {}
+    try:
+        model = joblib.load(MODEL_PATH)
+        meta  = json.loads(META_PATH.read_text())
+        return model, meta
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Could not load ML model: {e}")
+        return None, {}
+
+MODEL, META = load_ml()
+=======
 # ------------------------- Optional project modules ------------------------- #
 try:
     from scoring import calculate_news2, calculate_qsofa, calculate_sirs, interpret_risk
@@ -536,439 +640,519 @@ def predict_cluster(vitals, kmeans, scaler):
         vitals["systolic_bp"], vitals["spo2"], vitals.get("wbc", 0)
     ]])
     return int(kmeans.predict(X)[0])
+>>>>>>> origin/main
 
-def risk_badge(label: str):
-    l = (label or "").lower(); cls = "risk-low"
-    if "mod" in l or "medium" in l: cls = "risk-med"
-    if "high" in l or "severe" in l or "critical" in l: cls = "risk-high"
-    return f'<span class="risk-badge {cls}">{label}</span>'
+def feature_order(meta: Dict[str, Any]) -> List[str]:
+    for k in ("feature_columns","features","cols"):
+        if isinstance(meta.get(k), (list,tuple)) and meta[k]:
+            return list(meta[k])
+    # sensible default order
+    return ["Temperature","HeartRate","RespiratoryRate","SystolicBP","DiastolicBP","SpO2","WBC","GCS","Age"]
 
-# Fallback scoring if scoring.py is missing
-def fb_qsofa(v):
-    s=0
-    if (v.get('respiratory_rate') or 0) >= 22: s+=1
-    if (v.get('systolic_bp') or 999) <= 100: s+=1
-    if (str(v.get('consciousness','Alert')).lower() != 'alert'): s+=1
-    return s
-def fb_sirs(v):
-    s=0; t=v.get('temperature'); hr=v.get('heart_rate'); rr=v.get('respiratory_rate'); w=v.get('wbc')
-    if t is not None and (t>38 or t<36): s+=1
-    if hr is not None and hr>90: s+=1
-    if rr is not None and rr>20: s+=1
-    if w is not None and (w>12 or w<4): s+=1
-    return s
-def fb_news2(v):
-    s=0
-    rr=v.get('respiratory_rate',18) or 18; spo2=v.get('spo2',98) or 98; sbp=v.get('systolic_bp',120) or 120
-    hr=v.get('heart_rate',80) or 80; temp=v.get('temperature'); cons=str(v.get('consciousness','Alert')).lower()
-    if rr<=8: s+=3
-    elif 9<=rr<=11: s+=1
-    elif 21<=rr<=24: s+=2
-    elif rr>=25: s+=3
-    if spo2<=91: s+=3
-    elif 92<=spo2<=93: s+=2
-    elif spo2 in (94,95): s+=1
-    if sbp<=90: s+=3
-    elif 91<=sbp<=100: s+=2
-    elif 101<=sbp<=110: s+=1
-    if hr<=40 or hr>=131: s+=3
-    elif 111<=hr<=130: s+=2
-    elif 91<=hr<=110: s+=1
-    if temp is not None:
-        if temp<=35.0: s+=3
-        elif temp>=39.1: s+=2
-        elif 35.1<=temp<=36.0: s+=1
-    if cons!='alert': s+=3
-    return s
-def fb_interpret(news2,qsofa,sirs):
-    if news2>=7 or qsofa>=2: return ("High","#ff4b4b","Urgent clinical escalation required. Consider sepsis bundle.")
-    if news2>=5:            return ("Medium","#ffc700","Urgent review by clinician. Monitor closely.")
-    if news2>=1 or sirs>=2: return ("Low-Medium","#2b9aff","Requires assessment and monitoring.")
-    return ("Low","#00c48c","Continue routine monitoring")
+# -------------------- Clinical Scores --------------------
+def news2(temp: float, hr: float, rr: float, sbp: float, spo2: float, cons: str) -> Tuple[int,str]:
+    s = 0
+    # RR
+    if rr <= 8: s += 3
+    elif 9 <= rr <= 11: s += 1
+    elif 12 <= rr <= 20: s += 0
+    elif 21 <= rr <= 24: s += 2
+    else: s += 3
+    # SpO2 (scale 1)
+    if spo2 <= 91: s += 3
+    elif 92 <= spo2 <= 93: s += 2
+    elif 94 <= spo2 <= 95: s += 1
+    # Temp
+    if temp <= 35.0: s += 3
+    elif 35.1 <= temp <= 36.0: s += 1
+    elif 36.1 <= temp <= 38.0: s += 0
+    elif 38.1 <= temp <= 39.0: s += 1
+    else: s += 2
+    # SBP
+    if sbp <= 90: s += 3
+    elif 91 <= sbp <= 100: s += 2
+    elif 101 <= sbp <= 110: s += 1
+    # HR
+    if hr <= 40 or hr >= 131: s += 3
+    elif 111 <= hr <= 130: s += 2
+    elif 91 <= hr <= 110: s += 1
+    # Consciousness
+    if cons.lower() != "alert": s += 3
 
-def compute_scores(vitals):
-    if calculate_news2 and calculate_qsofa and calculate_sirs:
-        n_s, n_r = calculate_news2(vitals)
-        q_s, q_r = calculate_qsofa(vitals)
-        s_s, s_r = calculate_sirs(vitals)
+    # Risk buckets + red flag
+    if s >= 7:
+        r = "High"
+    elif s >= 5:
+        r = "Medium"
     else:
-        n_s, q_s, s_s = fb_news2(vitals), fb_qsofa(vitals), fb_sirs(vitals)
-        n_r, q_r, s_r = "—","—","—"
-    kmeans, scaler = load_kmeans_and_scaler()
-    cl = predict_cluster(vitals, kmeans, scaler)
-    st.session_state.scores = {
-        "news2": (n_s, n_r), "qsofa": (q_s, q_r), "sirs": (s_s, s_r),
-        "cluster": cl, "vitals": vitals, "ts": time.time()
-    }
+        red = any([
+            rr <= 8 or rr >= 25,
+            spo2 <= 91,
+            temp <= 35.0 or temp >= 39.1,
+            sbp <= 90,
+            hr <= 40 or hr >= 131,
+            cons.lower() != "alert",
+        ])
+        r = "Medium" if red else "Low"
+    return s, r
 
-# ------------------------- Shared Top Bar ------------------------- #
-def topbar(show_back:bool=True):
-    c1, c2, c3 = st.columns([1,6,1])
-    with c1:
-        if show_back and st.button("← Back", key=f"back_{st.session_state.route}"):
-            go_back()
-    with c2:
-        st.markdown("<div style='text-align:center' class='small'>", unsafe_allow_html=True)
-        st.markdown("**Sepsis RAG Assistant**")
-        st.markdown("</div>", unsafe_allow_html=True)
-    with c3:
-        col = st.container()
-        with col:
-            if st.button("🏠 Home", key=f"home_{st.session_state.route}"):
-                goto("HOME")
+def qsofa(rr: float, sbp: float, gcs: float|None, cons: str) -> Tuple[int,str]:
+    s = 0
+    if rr >= 22: s += 1
+    if sbp <= 100: s += 1
+    altered = (gcs is not None and gcs < 15) or (cons.lower() != "alert")
+    if altered: s += 1
+    r = "High" if s >= 2 else ("Medium" if s == 1 else "Low")
+    return s, r
 
-# ------------------------- Pages ------------------------- #
-def page_auth():
-    st.markdown("<div class='auth-wrap'><div class='gcard auth-card'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='text-align:center;margin:0 0 6px;'>Welcome to Sepsis RAG Assistant</h2>", unsafe_allow_html=True)
-    st.markdown("<div class='small' style='text-align:center;margin-bottom:10px'>Sign in or create an account</div>", unsafe_allow_html=True)
-    tabs = st.tabs(["Login", "Register"])
-    with tabs[0]:
-        u = st.text_input("Username", key="login_user")
-        p = st.text_input("Password", type="password", key="login_pass")
-        if st.button("Login", key="login_btn"):
-            if u and p:
-                st.session_state.auth_user = u
-                goto("HOME")
-            else:
-                st.error("Enter both username and password.")
-    with tabs[1]:
-        u2 = st.text_input("Create username", key="reg_user")
-        p2 = st.text_input("Create password", type="password", key="reg_pass")
-        if st.button("Create account", key="reg_btn"):
-            if u2 and p2:
-                st.session_state.auth_user = u2
-                goto("HOME")
-            else:
-                st.error("Enter both username and password.")
-    st.markdown("</div></div>", unsafe_allow_html=True)
+def sirs(temp: float, hr: float, rr: float, wbc: float|None) -> Tuple[int,str]:
+    c = 0
+    if temp > 38.0 or temp < 36.0: c += 1
+    if hr > 90: c += 1
+    if rr > 20: c += 1
+    if wbc is not None and (wbc > 12 or wbc < 4): c += 1
+    r = "High" if c >= 3 else ("Medium" if c == 2 else "Low")
+    return c, r
 
-def nebula_svg():
-    return """
-<svg class="nebula" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice">
-  <defs>
-    <radialGradient id="g1" cx="30%" cy="30%">
-      <stop offset="0%" stop-color="#7fd3ff" stop-opacity=".45"/>
-      <stop offset="100%" stop-color="#7c3aed" stop-opacity=".0"/>
-    </radialGradient>
-    <radialGradient id="g2" cx="70%" cy="70%">
-      <stop offset="0%" stop-color="#8b5cf6" stop-opacity=".35"/>
-      <stop offset="100%" stop-color="#0ea5e9" stop-opacity=".0"/>
-    </radialGradient>
-    <filter id="blur"><feGaussianBlur stdDeviation="40"/></filter>
-  </defs>
-  <circle cx="280" cy="160" r="220" fill="url(#g1)" filter="url(#blur)"/>
-  <circle cx="900" cy="300" r="260" fill="url(#g2)" filter="url(#blur)"/>
-</svg>
-    """
+def compute_all(v: Dict[str, Any]) -> Dict[str, Any]:
+    temp = float(v["Temperature"])
+    hr   = float(v["HeartRate"])
+    rr   = float(v["RespiratoryRate"])
+    sbp  = float(v["SystolicBP"])
+    spo2 = float(v["SpO2"])
+    wbc  = v.get("WBC", None)
+    wbc  = float(wbc) if wbc not in (None, "", np.nan) else None
+    gcs  = v.get("GCS", None)
+    gcs  = float(gcs) if gcs not in (None, "", np.nan) else None
+    cons = str(v.get("Consciousness", "Alert"))
 
-def page_home():
-    # header row (slim)
+    n2, n2r  = news2(temp, hr, rr, sbp, spo2, cons)
+    qf, qfr  = qsofa(rr, sbp, gcs, cons)
+    si, sir  = sirs(temp, hr, rr, wbc)
+
+    ml_pred, ml_prob, ml_risk = None, None, None
+    if MODEL is not None:
+        try:
+            feats = feature_order(META)
+            row = {c: v.get(c, None) for c in feats}
+            X   = pd.DataFrame([row], columns=feats)
+            y   = MODEL.predict(X)[0]
+            ml_pred = int(y) if isinstance(y, numbers.Number) else y
+            if hasattr(MODEL, "predict_proba"):
+                proba = MODEL.predict_proba(X)
+                ml_prob = float(proba[0][1]) if proba.shape[1] == 2 else float(np.max(proba[0]))
+            ml_risk = "High" if (ml_pred == 1) else "Low"
+        except Exception as e:
+            st.warning(f"ML inference failed: {e}")
+
+    return dict(
+        NEWS2=n2, NEWS2_Risk=n2r,
+        qSOFA=qf, qSOFA_Risk=qfr,
+        SIRS=si, SIRS_Risk=sir,
+        ML_Prediction=ml_pred, ML_Prob=ml_prob, ML_Risk=ml_risk
+    )
+
+# -------------------- Reusable UI bits --------------------
+def pill(text: str) -> str:
+    key = text.lower()
+    cls = "low" if key=="low" else "med" if key=="medium" else "high" if key=="high" else "ml"
+    return f'<span class="pill {cls}">{text}</span>'
+
+def kpi_tile(title: str, value: str, sub: str=""):
     st.markdown(
-        f"<div class='small' style='display:flex;justify-content:space-between;opacity:.9'>"
-        f"<div>Signed in as: <b>{st.session_state.get('auth_user','—')}</b></div>"
-        f"<div></div></div>", unsafe_allow_html=True)
+        f'<div class="tile"><div class="kpi">{value}</div>'
+        f'<div class="kpi-sub">{title}</div>'
+        f'<div class="kpi-sub">{sub}</div></div>', unsafe_allow_html=True
+    )
 
-    # HERO with nebula artwork
-    st.markdown("<div class='hero'>", unsafe_allow_html=True)
-    components.html(nebula_svg(), height=0)  # inject (absolute) without spacing
-    st.markdown("<h1>Welcome to Sepsis RAG Assistant</h1>", unsafe_allow_html=True)
-    st.markdown("<p>AI-powered clinical support for early sepsis detection and management.</p>", unsafe_allow_html=True)
+def gauge_svg(label: str, value: float, max_val: float, color: str, size: int=170):
+    pct = max(0.0, min(value/max_val, 1.0))
+    angle = pct * 270.0
+    r = 64
+    cx = size//2
+    cy = size//2 + 12
+    start = -135
+    end = start + angle
+    sx = cx + r * math.cos(math.radians(start))
+    sy = cy + r * math.sin(math.radians(start))
+    ex = cx + r * math.cos(math.radians(end))
+    ey = cy + r * math.sin(math.radians(end))
+    large = 1 if angle > 180 else 0
+    svg = f"""
+    <svg width="{size}" height="{size}" viewBox="0 0 {size} {size}">
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="{color}" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0.25"/>
+        </linearGradient>
+      </defs>
+      <circle cx="{cx}" cy="{cy}" r="{r}" stroke="rgba(255,255,255,.08)" stroke-width="16" fill="none"/>
+      <path d="M {sx:.2f} {sy:.2f} A {r} {r} 0 {large} 1 {ex:.2f} {ey:.2f}"
+            stroke="url(#g1)" stroke-width="16" fill="none" stroke-linecap="round"/>
+      <text x="{cx}" y="{cy-4}" text-anchor="middle" fill="white" font-size="30" font-weight="900">{int(value)}</text>
+      <text x="{cx}" y="{cy+26}" text-anchor="middle" fill="rgba(255,255,255,.7)" font-size="13">{label}</text>
+    </svg>
+    """
+    return svg
 
-    # CTA tiles
-    st.markdown("<div class='cta'>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1,1,1])
-    with c1:
-        st.markdown("<div class='tile'>", unsafe_allow_html=True)
-        st.markdown("<div class='title'>🩺 Enter Patient Vitals</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub'>Temperature, HR, BP, SpO₂, etc.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-        if st.button("Open Vitals", key="home_to_vitals"):
-            goto("VITALS")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div class='tile'>", unsafe_allow_html=True)
-        st.markdown("<div class='title'>📊 View Risk Scores</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub'>NEWS2, qSOFA, SIRS, Cluster.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-        if st.button("Go to Dashboard", key="home_to_dash"):
-            goto("VITALS")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown("<div class='tile'>", unsafe_allow_html=True)
-        st.markdown("<div class='title'>💬 Ask Clinical Questions</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub'>Get guideline-grounded answers.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-        if st.button("Open Chatbot", key="home_to_chat"):
-            goto("CHAT")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)  # end cta
-    st.markdown("</div>", unsafe_allow_html=True)  # end hero
-
-    # Footer actions
-    col_l, col_c, col_r = st.columns([1,6,1])
-    with col_l:
-        if st.button("Logout", key="logout_btn"):
-            st.session_state.auth_user = None
-            st.session_state.nav_stack.clear()
-            goto("AUTH")
-
-def page_vitals_tabs():
-    topbar(show_back=True)
-
-    # quick popover editor + risk compute
-    tb_l, tb_r = st.columns([3,2])
-    with tb_l:
-        st.markdown("<div class='card small'>Use presets to simulate risk, then generate a digital report.</div>", unsafe_allow_html=True)
-    with tb_r:
-        with st.popover("✏️ Edit vitals"):
-            v = st.session_state.vitals
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                v["temperature"] = st.number_input("Temp (°C)", 30.0, 45.0, v.get("temperature", 37.0), 0.1)
-                v["spo2"] = st.number_input("SpO₂ (%)", 70, 100, v.get("spo2", 98), 1)
-            with c2:
-                v["heart_rate"] = st.number_input("Heart Rate (bpm)", 30, 200, v.get("heart_rate", 80), 1)
-                v["systolic_bp"] = st.number_input("Systolic BP (mmHg)", 60, 250, v.get("systolic_bp", 120), 1)
-            with c3:
-                v["respiratory_rate"] = st.number_input("Resp Rate (/min)", 5, 50, v.get("respiratory_rate", 16), 1)
-                v["wbc"] = st.number_input("WBC (/μL) (optional)", 0, 50000, v.get("wbc", 0), 100)
-            v["consciousness"] = st.selectbox("AVPU", ["Alert","Voice","Pain","Unresponsive"],
-                                              index=["Alert","Voice","Pain","Unresponsive"].index(v.get("consciousness","Alert")))
-            st.caption("Tip: use presets below.")
-        if st.button("⚙️ Calculate risk", key="calc_risk"):
-            vt = st.session_state.vitals
-            errs=[]
-            if not (30 <= vt["temperature"] <= 45): errs.append("Temperature out of range")
-            if not (30 <= vt["heart_rate"] <= 200): errs.append("Heart rate out of range")
-            if errs: st.error(" • ".join(errs))
-            else:
-                compute_scores(vt)
-                st.success("Scores updated.")
-
-    tabs = st.tabs(["Dashboard", "Timeline", "Report"])
-
-    # DASHBOARD
-    with tabs[0]:
-        pa, pb, pc, pd = st.columns(4)
-        if pa.button("Preset: High"): st.session_state.vitals.update({"temperature":39.2,"heart_rate":125,"respiratory_rate":28,"systolic_bp":88,"spo2":89,"consciousness":"Voice"})
-        if pb.button("Preset: Med"):  st.session_state.vitals.update({"temperature":38.5,"heart_rate":105,"respiratory_rate":22,"systolic_bp":95,"spo2":94,"consciousness":"Alert"})
-        if pc.button("Preset: Low"):  st.session_state.vitals.update({"temperature":37.1,"heart_rate":85,"respiratory_rate":18,"systolic_bp":115,"spo2":97,"consciousness":"Alert"})
-        if pd.button("➕ Snapshot"):
-            st.session_state.timeline.append({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), **st.session_state.vitals})
-        st.write("")
-        scores = st.session_state.scores
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown('<div class="card">**NEWS2**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['news2'][0] if scores else '—'}</div>", unsafe_allow_html=True)
-            if scores: st.markdown(risk_badge(scores["news2"][1]), unsafe_allow_html=True)
-        with k2:
-            st.markdown('<div class="card">**qSOFA**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['qsofa'][0] if scores else '—'}</div>", unsafe_allow_html=True)
-            if scores: st.markdown(risk_badge(scores["qsofa"][1]), unsafe_allow_html=True)
-        with k3:
-            st.markdown('<div class="card">**SIRS**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['sirs'][0] if scores else '—'}</div>", unsafe_allow_html=True)
-            if scores: st.markdown(risk_badge(scores["sirs"][1]), unsafe_allow_html=True)
-        with k4:
-            st.markdown('<div class="card">**Profile**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['cluster'] if scores else '—'}</div>", unsafe_allow_html=True)
-            st.caption("K-Means cluster")
-
-        c1, c2 = st.columns([1.1,1])
-        with c1:
-            risk_numeric = 0
-            if scores:
-                risk_numeric += min(20, scores["news2"][0] * 2)
-                risk_numeric += min(9, scores["qsofa"][0] * 3)
-                risk_numeric += min(8, scores["sirs"][0] * 2)
-                risk_numeric = max(0, min(100, int((risk_numeric / 37) * 100)))
-            gauge = go.Figure(go.Indicator(
-                mode="gauge+number", value=risk_numeric, title={"text":"Overall Risk (heuristic)"},
-                gauge={"axis":{"range":[0,100]},"bar":{"thickness":0.3},
-                       "steps":[{"range":[0,35],"color":"#10b98140"},
-                                {"range":[35,70],"color":"#f59e0b40"},
-                                {"range":[70,100],"color":"#ef444440"}],
-                       "threshold":{"line":{"color":"#ef4444","width":4},"thickness":0.75,"value":70}},
-                number={"suffix":"%"}))
-            gauge.update_layout(template=PLOTLY_TEMPLATE, height=260, margin=dict(l=18,r=18,t=30,b=10))
-            st.plotly_chart(gauge, use_container_width=True)
-        with c2:
-            normals={"temperature":(36.1,37.2),"heart_rate":(60,100),"respiratory_rate":(12,20),"systolic_bp":(100,130),"spo2":(95,100)}
-            current=scores["vitals"] if scores else st.session_state.vitals
-            cats,vals=[],[]
-            for k,(lo,hi) in normals.items():
-                v=current[k]; cats.append(k)
-                score=0.1 if lo<=v<=hi else min(1.0, abs(v-(lo if v<lo else hi))/max(1e-6,(hi-lo)))
-                vals.append(score)
-            radar=go.Figure()
-            radar.add_trace(go.Scatterpolar(r=vals+[vals[0]], theta=cats+[cats[0]], fill='toself', name='Abnormality'))
-            radar.update_layout(template=PLOTLY_TEMPLATE, polar=dict(radialaxis=dict(range=[0,1], showticklabels=False)),
-                                showlegend=False, height=260, margin=dict(l=10,r=10,t=30,b=10))
-            st.plotly_chart(radar, use_container_width=True)
-
-        st.markdown("#### 🔎 Interpretation")
-        st.markdown('<div class="card" style="max-height:170px; overflow:auto">', unsafe_allow_html=True)
-        if scores:
-            lbl,col,adv = fb_interpret(scores["news2"][0], scores["qsofa"][0], scores["sirs"][0]) if not interpret_risk else interpret_risk(scores["news2"][0], scores["qsofa"][0], scores["sirs"][0])
-            st.markdown(f"**Risk:** <span style='color:{col}; font-weight:800'>{lbl}</span><br>{adv}", unsafe_allow_html=True)
-        else:
-            st.info("Click **⚙️ Calculate risk** to populate this section.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # TIMELINE
-    with tabs[1]:
-        top = st.columns([1,1,1,1])
-        with top[0]:
-            if st.button("➕ Add snapshot (now)"):
-                st.session_state.timeline.append({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), **st.session_state.vitals})
-        with top[1]:
-            if st.button("🧹 Clear"):
-                st.session_state.timeline = []
-        with top[3]:
-            st.caption("Snapshots capture current vitals for trends.")
-        st.markdown('<div class="card" style="max-height:460px; overflow:auto">', unsafe_allow_html=True)
-        if st.session_state.timeline:
-            df = pd.DataFrame(st.session_state.timeline)
-            df["timestamp"]=pd.to_datetime(df["timestamp"]); df=df.sort_values("timestamp")
-            long = df.melt(id_vars=["timestamp","consciousness","wbc"],
-                           value_vars=["heart_rate","respiratory_rate","systolic_bp","temperature","spo2"],
-                           var_name="vital", value_name="value")
-            line = px.line(long, x="timestamp", y="value", color="vital", markers=True, template=PLOTLY_TEMPLATE)
-            line.update_layout(height=360, margin=dict(l=6,r=6,t=6,b=6), legend_title="")
-            st.plotly_chart(line, use_container_width=True)
-            st.dataframe(df.set_index("timestamp"), use_container_width=True, height=200)
-        else:
-            st.info("No snapshots yet. Add one to visualize trends.")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # REPORT
-    with tabs[2]:
-        st.markdown("### 🧾 Create Digital Report")
-        st.caption("Build a compact patient profile & export.")
-        p = st.session_state.profile
-        r1c1,r1c2,r1c3,r1c4,r1c5,r1c6 = st.columns([1.2,1.2,0.9,0.9,0.9,1.0])
-        with r1c1: p["username"]=st.text_input("Username / Handle", p.get("username",""))
-        with r1c2: p["patient_name"]=st.text_input("Patient name", p.get("patient_name",""))
-        with r1c3: p["mrn"]=st.text_input("MRN / ID", p.get("mrn",""))
-        with r1c4: p["age"]=st.number_input("Age", 0, 120, int(p.get("age",0)))
-        with r1c5: p["sex"]=st.selectbox("Sex", ["Male","Female","Other"], index=["Male","Female","Other"].index(p.get("sex","Male")))
-        with r1c6:
-            col_h,col_w = st.columns(2)
-            with col_h: p["height_cm"]=st.number_input("Ht (cm)", 0.0, 260.0, float(p.get("height_cm",0.0)), step=0.1)
-            with col_w: p["weight_kg"]=st.number_input("Wt (kg)", 0.0, 400.0, float(p.get("weight_kg",0.0)), step=0.1)
-        r2c1,r2c2,r2c3,r2c4 = st.columns([1.2,1.2,1.2,1.2])
-        with r2c1: p["chief_complaint"]=st.text_input("Chief complaint", p.get("chief_complaint",""))
-        with r2c2: p["infection_source"]=st.text_input("Suspected infection source", p.get("infection_source",""))
-        with r2c3: p["allergies"]=st.text_input("Allergies", p.get("allergies",""))
-        with r2c4: p["comorbidities"]=st.text_input("Comorbidities", p.get("comorbidities",""))
-        r3c1,r3c2,r3c3 = st.columns([1.4,0.8,1.8])
-        with r3c1: p["current_meds"]=st.text_input("Current meds", p.get("current_meds",""))
-        with r3c2: p["code_status"]=st.selectbox("Code status", ["Full Code","DNR","DNI","Limited"],
-                                                 index=["Full Code","DNR","DNI","Limited"].index(p.get("code_status","Full Code")))
-        with r3c3: p["notes"]=st.text_input("Notes", p.get("notes",""))
-        files = st.file_uploader("Attach medical report(s) (PDF/Image)", type=["pdf","png","jpg","jpeg"], accept_multiple_files=True)
-        if files:
-            for f in files:
-                st.session_state.profile["attachments"].append({"name": f.name, "type": f.type})
-            st.success(f"Added {len(files)} attachment(s).")
-        a1,a2,a3,_ = st.columns([1,1,1,3])
-        if a1.button("💾 Save Profile"): st.success("Profile saved for this session.")
-        if a2.button("🧹 Clear Profile"):
-            st.session_state.profile = {k: ("" if isinstance(v,str) else 0 if isinstance(v,(int,float)) else [] if isinstance(v,list) else v)
-                                        for k,v in st.session_state.profile.items()}
-            st.rerun()
-        gen_clicked = a3.button("🧾 Generate Report")
-        if gen_clicked:
-            h_m = (p.get("height_cm",0.0) or 0)/100.0; w_kg = p.get("weight_kg",0.0) or 0
-            bmi = round(w_kg/(h_m*h_m),1) if h_m and w_kg else None
-            s = st.session_state.scores; v = st.session_state.vitals
-            lines = ["# Patient Digital Report", f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}", "",
-                     "## Identity",
-                     f"- Username: {p.get('username','—')}",
-                     f"- Name: {p.get('patient_name','—')}  |  MRN: {p.get('mrn','—')}",
-                     f"- Age/Sex: {p.get('age','—')} / {p.get('sex','—')}",
-                     f"- Height/Weight/BMI: {p.get('height_cm','—')} cm / {p.get('weight_kg','—')} kg" + (f" / BMI {bmi}" if bmi else ""),
-                     "", "## Clinical Context",
-                     f"- Chief complaint: {p.get('chief_complaint','—')}",
-                     f"- Suspected infection source: {p.get('infection_source','—')}",
-                     f"- Allergies: {p.get('allergies','—')}",
-                     f"- Comorbidities: {p.get('comorbidities','—')}",
-                     f"- Current meds: {p.get('current_meds','—')}",
-                     f"- Code status: {p.get('code_status','—')}",
-                     f"- Notes: {p.get('notes','—')}"]
-            if p.get("attachments"):
-                lines.append(f"- Attachments: {', '.join([a['name'] for a in p['attachments']])}")
-            lines += ["", "## Latest Vitals",
-                      f"- Temp: {v['temperature']} °C   | HR: {v['heart_rate']} bpm   | RR: {v['respiratory_rate']} /min",
-                      f"- SBP: {v['systolic_bp']} mmHg  | SpO₂: {v['spo2']} %         | AVPU: {v['consciousness']}", "",
-                      "## Risk Scores"]
-            if s:
-                lines += [f"- NEWS2: {s['news2'][0]} ({s['news2'][1]})",
-                          f"- qSOFA: {s['qsofa'][0]} ({s['qsofa'][1]})",
-                          f"- SIRS: {s['sirs'][0]} ({s['sirs'][1]})",
-                          f"- Profile (K-Means): {s['cluster']}"]
-                lbl,col,adv = fb_interpret(s['news2'][0], s['qsofa'][0], s['sirs'][0]) if not interpret_risk else interpret_risk(s['news2'][0], s['qsofa'][0], s['sirs'][0])
-                lines += ["", "## Interpretation", f"- Risk: {lbl} — {adv}"]
-            else:
-                lines.append("_No scores yet. Click ‘⚙️ Calculate risk’ above._")
-            report_md = "\n".join(lines)
-            st.markdown("#### Preview")
-            st.markdown('<div class="card" style="height:360px; overflow:auto">', unsafe_allow_html=True)
-            st.markdown(report_md)
-            st.markdown('</div>', unsafe_allow_html=True)
-            d1,d2,d3 = st.columns(3)
-            with d1:
-                st.download_button("⬇️ Profile (JSON)", data=json.dumps(st.session_state.profile, indent=2),
-                                   file_name="patient_profile.json", mime="application/json", use_container_width=True)
-            with d2:
-                if st.session_state.timeline:
-                    df = pd.DataFrame(st.session_state.timeline); buf = io.StringIO(); df.to_csv(buf, index=False)
-                    st.download_button("⬇️ Timeline (CSV)", data=buf.getvalue(), file_name="vitals_timeline.csv",
-                                       mime="text/csv", use_container_width=True)
-                else:
-                    st.button("⬇️ Timeline (CSV)", disabled=True, use_container_width=True)
-            with d3:
-                st.download_button("⬇️ Report (TXT)", data=report_md, file_name="patient_report.txt",
-                                   mime="text/plain", use_container_width=True)
-
-def page_chat():
-    topbar(show_back=True)
-    st.markdown("<div class='card small'>Guideline-aware assistant with citations.</div>", unsafe_allow_html=True)
-
-    chat_h = 520
-    st.markdown(f'<div class="card" style="height:{chat_h}px; overflow:auto; padding:12px;">', unsafe_allow_html=True)
-    if len(st.session_state.chat) == 0:
-        st.markdown("**Ask about fluids, antibiotics, or immediate steps.**")
+# -------------------- Sidebar --------------------
+with st.sidebar:
+    st.markdown("### Controls")
+    st.markdown(
+        "<div class='soft'>Use the tabs below to navigate. Add vitals first, then explore analytics and ML/RAG.</div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+    st.caption("Model status:")
+    if MODEL is None:
+        st.error("No ML model loaded")
     else:
-        for m in st.session_state.chat:
-            speaker = "You" if m["role"]=="user" else "Assistant"
-            st.markdown(f"**{speaker}:** {m['content']}")
+        st.success("ML model loaded")
+    st.caption("RAG status:")
+    try:
+        import rag_system  # noqa
+        st.success("RAG available")
+    except Exception:
+        st.warning("RAG not available")
+
+# -------------------- Main Tabs --------------------
+tab_overview, tab_patient, tab_analytics, tab_duplicates, tab_assistant, tab_upload = st.tabs(
+    ["🏠 Overview", "🩺 Patient", "📈 Analytics", "🧬 Duplicates", "💬 Assistant", "📂 Upload"]
+)
+
+# === OVERVIEW ===
+with tab_overview:
+    st.markdown("#### At-a-glance")
+
+    df = st.session_state["data"]
+    total = len(df)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        kpi_tile("Total Records", f"{total}")
+    with col2:
+        if total:
+            high_news = (df["NEWS2_Risk"] == "High").sum()
+            kpi_tile("High NEWS2 %", f"{(100*high_news/total):.1f}%")
+        else:
+            kpi_tile("High NEWS2 %", "0.0%")
+    with col3:
+        if total and "ML_Risk" in df.columns and df["ML_Risk"].notna().any():
+            high_ml = (df["ML_Risk"] == "High").sum()
+            kpi_tile("ML High-Risk %", f"{(100*high_ml/total):.1f}%")
+        else:
+            kpi_tile("ML High-Risk %", "—", "Load a model to enable.")
+    with col4:
+        if total:
+            core = ["Temperature","HeartRate","RespiratoryRate","SystolicBP","SpO2","WBC","GCS","Consciousness"]
+            completeness = np.mean([df[c].notna().mean() if c in df else 0 for c in core]) * 100
+            kpi_tile("Data Completeness", f"{completeness:.0f}%")
+        else:
+            kpi_tile("Data Completeness", "0%")
+
+    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+    # Latest snapshot card
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown("**Latest Snapshot**")
+    if total == 0:
+        st.info("No vitals yet. Go to **Patient** tab to add a record.")
+    else:
+        latest = df.iloc[-1]
+        cA, cB, cC, cD = st.columns(4)
+        with cA:
+            st.markdown(
+                gauge_svg("NEWS2", float(latest["NEWS2"]), 20, "#ff6b6b" if latest["NEWS2_Risk"]=="High" else "#ffcc66" if latest["NEWS2_Risk"]=="Medium" else "#00d1a7"),
+                unsafe_allow_html=True
+            )
+        with cB:
+            st.markdown(
+                gauge_svg("qSOFA", float(latest["qSOFA"]), 3, "#ff6b6b" if latest["qSOFA_Risk"]=="High" else "#ffcc66" if latest["qSOFA_Risk"]=="Medium" else "#00d1a7"),
+                unsafe_allow_html=True
+            )
+        with cC:
+            st.markdown(
+                gauge_svg("SIRS", float(latest["SIRS"]), 4, "#ff6b6b" if latest["SIRS_Risk"]=="High" else "#ffcc66" if latest["SIRS_Risk"]=="Medium" else "#00d1a7"),
+                unsafe_allow_html=True
+            )
+        with cD:
+            if pd.notna(latest["ML_Risk"]):
+                col = "#ff6b6b" if latest["ML_Risk"]=="High" else "#7fd3ff"
+                score = 100*float(latest["ML_Prob"]) if pd.notna(latest["ML_Prob"]) else 50
+                st.markdown(
+                    gauge_svg("ML Risk%", score, 100, col),
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown('<div class="soft">Load an ML model to view ML gauge.</div>', unsafe_allow_html=True)
+
+        st.markdown(
+            f"- NEWS2: **{int(latest['NEWS2'])}** {pill(latest['NEWS2_Risk'])} &nbsp; "
+            f"qSOFA: **{int(latest['qSOFA'])}** {pill(latest['qSOFA_Risk'])} &nbsp; "
+            f"SIRS: **{int(latest['SIRS'])}** {pill(latest['SIRS_Risk'])} &nbsp; "
+            + (f"ML: {pill(latest['ML_Risk'])} " + (f"(p={latest['ML_Prob']:.2f})" if pd.notna(latest['ML_Prob']) else "") if pd.notna(latest['ML_Risk']) else "ML: —"),
+            unsafe_allow_html=True
+        )
     st.markdown('</div>', unsafe_allow_html=True)
 
-    c_l, c_r, c_r2 = st.columns([6,1.2,1.2])
-    with c_l:
-        q = st.text_input("Ask a clinical question", value="", placeholder="e.g., Empiric antibiotics for suspected sepsis?")
-    with c_r:
-        ask = st.button("Ask 💬", use_container_width=True, key="ask_btn")
-    with c_r2:
-        if st.button("💧 Fluids", use_container_width=True): q = "How much crystalloid should I give initially?"
-        if st.button("💊 Rx", use_container_width=True): q = "What are recommended empiric antibiotics for suspected sepsis?"
-    if ask and q:
-        st.session_state.chat.append({"role":"user","content":q})
-        try:
-            rag = load_rag_system()
-            with st.spinner("Retrieving guidelines..."):
-                answer, sources = rag.query(q, patient_scores=st.session_state.scores)
-            unique_sources = list(dict.fromkeys(sources)) if sources else []
-            cite = ("\n\n**Sources:**\n" + "\n".join([f"- {s}" for s in unique_sources[:5]])) if unique_sources else ""
-            st.session_state.chat.append({"role":"assistant","content":answer + cite})
-        except Exception as e:
-            st.session_state.chat.append({"role":"assistant","content":f"Sorry — guidance unavailable right now. ({e})"})
-        st.rerun()
+# === PATIENT ENTRY ===
+with tab_patient:
+    st.markdown("#### Add / Score Vitals")
+    with st.form("vitals_form", clear_on_submit=True):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            temperature = st.number_input("Temperature (°C)", 30.0, 45.0, 37.0, step=0.1)
+            heart_rate  = st.number_input("Heart Rate (bpm)", 0, 250, 92, step=1)
+            respiratory = st.number_input("Respiratory Rate (breaths/min)", 0, 60, 22, step=1)
+            systolic    = st.number_input("Systolic BP (mmHg)", 0, 300, 98, step=1)
+        with c2:
+            diastolic   = st.number_input("Diastolic BP (mmHg)", 0, 200, 64, step=1)
+            spo2        = st.number_input("SpO₂ (%)", 0, 100, 93, step=1)
+            wbc         = st.number_input("WBC (×10³/µL)", 0.0, 60.0, 12.1, step=0.1)
+            gcs         = st.number_input("GCS (3–15)", 3, 15, 14, step=1)
+        with c3:
+            consciousness = st.selectbox("Consciousness (AVPU)", ["Alert","Verbal","Pain","Unresponsive"], index=1)
+            notes         = st.text_area("Notes (optional)", "", height=90)
+            submitted     = st.form_submit_button("Save & Score")
 
+    if submitted:
+        errs=[]
+        if heart_rate <= 0: errs.append("Heart rate invalid.")
+        if respiratory <= 0: errs.append("Respiratory rate invalid.")
+        if systolic <= 0: errs.append("Systolic BP invalid.")
+        if spo2 < 0 or spo2 > 100: errs.append("SpO₂ must be 0–100.")
+        if errs:
+            for e in errs: st.error(e)
+        else:
+            rec = dict(
+                Timestamp=dt.datetime.now(),
+                Temperature=float(temperature), HeartRate=float(heart_rate),
+                RespiratoryRate=float(respiratory), SystolicBP=float(systolic),
+                DiastolicBP=float(diastolic), SpO2=float(spo2),
+                WBC=float(wbc), GCS=float(gcs),
+                Consciousness=str(consciousness), Notes=str(notes).strip()
+            )
+            rec.update(compute_all(rec))
+            st.session_state["data"] = pd.concat(
+                [st.session_state["data"], pd.DataFrame([rec], columns=SCHEMA)],
+                ignore_index=True
+            )
+            st.success("Vitals saved. Scores computed.")
+            with st.expander("Show latest record"):
+                st.dataframe(st.session_state["data"].tail(1), use_container_width=True)
+
+# === ANALYTICS ===
+with tab_analytics:
+    st.markdown("#### Risk & Quality Analytics")
+    df = st.session_state["data"]
+
+    if df.empty:
+        st.info("Add some vitals in the Patient tab.")
+    else:
+        # Risk distribution (NEWS2)
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("**NEWS2 Risk Distribution**")
+        counts = df["NEWS2_Risk"].value_counts()
+        for cat in ["Low","Medium","High"]:
+            if cat not in counts: counts.loc[cat] = 0
+        counts = counts[["Low","Medium","High"]]
+
+        fig, ax = plt.subplots(figsize=(4.8,4.0))
+        ax.pie(
+            counts.values,
+            labels=[f"{k} ({int(v)})" for k,v in counts.items()],
+            startangle=90, counterclock=False, autopct="%1.1f%%",
+            wedgeprops={'width':0.38, 'edgecolor':'#1a2030'},
+            colors=["#00d1a7","#ffcc66","#ff6b6b"]
+        )
+        ax.axis('equal')
+        st.pyplot(fig)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Completeness
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("**Field Completeness (%)**")
+        fields = ["Temperature","HeartRate","RespiratoryRate","SystolicBP","DiastolicBP","SpO2","WBC","GCS","Consciousness","Notes"]
+        comp = []
+        for c in fields:
+            if c not in df:
+                comp.append(0.0)
+            else:
+                if df[c].dtype == object:
+                    filled = df[c].astype(str).str.strip().ne("").mean() * 100.0
+                else:
+                    filled = df[c].notna().mean() * 100.0
+                comp.append(filled)
+        st.bar_chart(pd.DataFrame({"Field":fields,"Filled %":comp}).set_index("Field"))
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # NEWS2 Trend
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown("**NEWS2 Trend**")
+        tr = df[["Timestamp","NEWS2"]].copy()
+        if not pd.api.types.is_datetime64_any_dtype(tr["Timestamp"]):
+            tr["Timestamp"] = pd.to_datetime(tr["Timestamp"], errors="coerce").fillna(pd.Timestamp.now())
+        tr = tr.sort_values("Timestamp").set_index("Timestamp")
+        st.line_chart(tr["NEWS2"])
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        # Export
+        st.markdown('<div class="soft">', unsafe_allow_html=True)
+        st.markdown("**Export session data**")
+        st.download_button(
+            "Download CSV",
+            df.to_csv(index=False).encode("utf-8"),
+            file_name="sepsis_session.csv",
+            mime="text/csv"
+        )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# === DUPLICATES ===
+with tab_duplicates:
+    st.markdown("#### Duplicate / Similar Records")
+    df = st.session_state["data"]
+    if df.empty:
+        st.info("No data to analyze yet.")
+    else:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.write("Exact-match duplicates over key vitals.")
+        subset = ["Temperature","HeartRate","RespiratoryRate","SystolicBP","DiastolicBP","SpO2"]
+        mask = df.duplicated(subset=subset, keep=False)
+        dups = df[mask].copy()
+        if dups.empty:
+            st.success("No exact duplicates detected.")
+        else:
+            st.warning(f"Potential duplicates: {len(dups)} record(s).")
+            groups = dups.groupby(subset).apply(lambda x: list(x.index)).to_dict()
+            for k, idxs in groups.items():
+                if len(idxs) >= 2:
+                    st.markdown(
+                        f"- Records {idxs} share "
+                        f"Temp={k[0]}, HR={k[1]}, RR={k[2]}, SBP={k[3]}, DBP={k[4]}, SpO₂={k[5]}"
+                    )
+            st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+            st.dataframe(dups.reset_index(drop=True), use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# === ASSISTANT (RAG) ===
+with tab_assistant:
+    st.markdown("#### AI Assistant (RAG)")
+    try:
+        import rag_system  # your module exposing: get_answer / answer_query / ask / run
+        rag_ok = True
+    except Exception as e:
+        rag_ok = False
+        st.error(f"RAG not available: {e}")
+
+    if rag_ok:
+        if "chat" not in st.session_state:
+            st.session_state["chat"] = []
+        q = st.text_input("Ask about sepsis or guidelines", "Initial fluid bolus for suspected sepsis?")
+        c1, c2 = st.columns([1,6])
+        with c1:
+            if st.button("Ask"):
+                try:
+                    if hasattr(rag_system, "get_answer"):
+                        resp = rag_system.get_answer(q)
+                    elif hasattr(rag_system, "answer_query"):
+                        resp = rag_system.answer_query(q)
+                    elif hasattr(rag_system, "ask"):
+                        resp = rag_system.ask(q)
+                    else:
+                        resp = rag_system.run(q)
+                    ans, src = "", []
+                    if isinstance(resp, dict):
+                        ans = resp.get("answer","")
+                        src = resp.get("sources", [])
+                    elif isinstance(resp, tuple):
+                        ans = resp[0]; src = resp[1] if len(resp)>1 else []
+                    else:
+                        ans = str(resp)
+                    st.session_state["chat"].append({"q":q, "a":ans, "s":src})
+                except Exception as e:
+                    st.error(f"RAG error: {e}")
+        st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+        for item in st.session_state["chat"]:
+            st.markdown(f"**Q:** {item['q']}")
+            st.markdown(f"**A:** {item['a']}")
+            if item["s"]:
+                st.markdown("**Sources**")
+                for i, s in enumerate(item["s"], start=1):
+                    with st.expander(f"Source {i}"):
+                        if isinstance(s, dict):
+                            st.markdown(f"**{s.get('title') or s.get('source') or 'Document'}**")
+                            st.write(s.get("content","")[:800] or "(no preview)")
+                        else:
+                            st.write(str(s))
+            st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+# === UPLOAD ===
+with tab_upload:
+    st.markdown("#### Upload Vitals CSV")
+    st.caption("Columns: Temperature, HeartRate, RespiratoryRate, SystolicBP, DiastolicBP, SpO2, WBC, GCS, Consciousness, Notes")
+    up = st.file_uploader("Choose CSV", type=["csv"])
+    if up is not None:
+        try:
+            df_in = pd.read_csv(up)
+            # normalize common aliases
+            alias = {
+                "temp":"Temperature","temperature":"Temperature",
+                "hr":"HeartRate","heart rate":"HeartRate","heartrate":"HeartRate",
+                "resp":"RespiratoryRate","respiratoryrate":"RespiratoryRate","resp rate":"RespiratoryRate",
+                "sbp":"SystolicBP","systolicbp":"SystolicBP",
+                "dbp":"DiastolicBP","diastolicbp":"DiastolicBP",
+                "spo2":"SpO2","o2sat":"SpO2",
+                "wbc":"WBC","gcs":"GCS",
+                "consciousness level":"Consciousness"
+            }
+            df_in = df_in.rename(columns={c: alias.get(c.strip().lower(), c) for c in df_in.columns})
+            req = ["Temperature","HeartRate","RespiratoryRate","SystolicBP","DiastolicBP","SpO2","WBC","GCS","Consciousness"]
+            miss = [c for c in req if c not in df_in.columns]
+            if miss:
+                st.error(f"Missing required columns: {miss}")
+            else:
+                for c in ["Temperature","HeartRate","RespiratoryRate","SystolicBP","DiastolicBP","SpO2","WBC","GCS"]:
+                    df_in[c] = pd.to_numeric(df_in[c], errors="coerce")
+                df_in["Consciousness"] = df_in["Consciousness"].fillna("Alert").astype(str)
+                if "Notes" not in df_in: df_in["Notes"] = ""
+                df_in["Timestamp"] = dt.datetime.now()
+
+                out = []
+                for _, r in df_in.iterrows():
+                    row = dict(
+                        Timestamp=r["Timestamp"],
+                        Temperature=float(r["Temperature"]) if not pd.isna(r["Temperature"]) else 0.0,
+                        HeartRate=float(r["HeartRate"]) if not pd.isna(r["HeartRate"]) else 0.0,
+                        RespiratoryRate=float(r["RespiratoryRate"]) if not pd.isna(r["RespiratoryRate"]) else 0.0,
+                        SystolicBP=float(r["SystolicBP"]) if not pd.isna(r["SystolicBP"]) else 0.0,
+                        DiastolicBP=float(r["DiastolicBP"]) if not pd.isna(r["DiastolicBP"]) else 0.0,
+                        SpO2=float(r["SpO2"]) if not pd.isna(r["SpO2"]) else 0.0,
+                        WBC=float(r["WBC"]) if not pd.isna(r["WBC"]) else None,
+                        GCS=float(r["GCS"]) if not pd.isna(r["GCS"]) else None,
+                        Consciousness=str(r["Consciousness"]) if pd.notna(r["Consciousness"]) else "Alert",
+                        Notes=str(r["Notes"]) if pd.notna(r["Notes"]) else ""
+                    )
+                    row.update(compute_all(row))
+                    out.append(row)
+
+                if out:
+                    df_out = pd.DataFrame(out, columns=SCHEMA)
+                    st.session_state["data"] = pd.concat([st.session_state["data"], df_out], ignore_index=True)
+                    st.success(f"Imported {len(df_out)} records from {up.name}.")
+                    st.dataframe(df_out.head(), use_container_width=True)
+        except Exception as e:
+            st.error(f"Upload failed: {e}")
+
+<<<<<<< HEAD
+# -------------------- Footer --------------------
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown(
+    '<div style="text-align:center; opacity:.8;">'
+    'Sepsis Risk Assistant • Dark Glassmorphism PRO • '
+    f'Python {os.sys.version.split()[0]}'
+    '</div>',
+    unsafe_allow_html=True
+)
+=======
 # ------------------------- Router (never blank) ------------------------- #
 valid = {"AUTH","HOME","VITALS","CHAT"}
 if st.session_state.route not in valid:
@@ -988,3 +1172,4 @@ else:
 // added login page
 // asadd okay
 >>>>>>> 13f805555b3536fde72e37e09b2bb701e594ca63
+>>>>>>> origin/main
