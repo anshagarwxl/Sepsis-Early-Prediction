@@ -1,55 +1,51 @@
-# Sepsis Early Warning RAG Assistant
+# 🩺 Sepsis Early Warning RAG Assistant
 
-A lightweight AI-powered assistant that combines clinical risk scoring and retrieval-augmented generation (RAG) to support frontline healthcare workers in the early detection and management of sepsis.
+A lightweight AI-powered assistant that combines **clinical risk scoring** and **retrieval-augmented generation (RAG)** to support frontline healthcare workers in the **early detection and management of sepsis**.
 
-# Problem Statement
+---
 
-Sepsis is a life-threatening syndrome caused by the body’s extreme response to infection.
+## 🚨 Problem Statement
 
-Every hour of delayed treatment increases mortality by 8%.
+- Sepsis is a **life-threatening syndrome** caused by the body’s extreme response to infection.  
+- Every **hour of delayed treatment increases mortality by ~8%**.  
+- Globally, **1 in 3 patients with sepsis die**.  
+- In India, there is **only 1 doctor per 1000 people**, leading to overcrowding and diagnostic delays.  
+- Manual tools (NEWS2, qSOFA, SIRS) are rarely used in busy hospitals.  
 
-Globally, 1 in 3 patients with sepsis die.
+👉 **Result:** Many patients slip into **septic shock** before receiving timely care.
 
-In India, there is only 1 doctor per 1000 people, leading to overcrowding and diagnostic delays.
+---
 
-Manual tools like NEWS2, qSOFA, SIRS are rarely used in busy hospitals.
+## 💡 Solution
 
-Result: Many patients slip into septic shock before getting timely care.
+The **Sepsis Early Warning RAG Assistant** is a **Streamlit-based app** that enables clinicians to:
 
-# Solution
+- ✅ Enter patient vitals (temperature, HR, BP, SpO₂, consciousness, WBC).  
+- ✅ Instantly calculate sepsis risk scores: **NEWS2, qSOFA, SIRS**.  
+- ✅ Cluster patients into risk profiles using **KMeans**.  
+- ✅ Ask clinical questions → receive **guideline-grounded answers with citations** (via RAG).  
 
-The Sepsis Early Warning RAG Assistant is a Streamlit-based app that enables clinicians to:
+**Workflow:**  
+`Vitals ➝ Scores + Cluster ➝ Clinical Question ➝ Evidence-based Recommendation`
 
-Enter patient vitals (temperature, HR, BP, SpO₂, consciousness, WBC).
+---
 
-Calculate sepsis risk scores instantly: NEWS2, qSOFA, SIRS.
+## 🛠 Tech Stack
 
-Cluster patients into risk profiles using a KMeans model.
+- **Frontend:** Streamlit (Python UI)  
+- **Risk Scoring:** Pure Python implementations of NEWS2, qSOFA, SIRS  
+- **ML Profiling:** KMeans clustering + StandardScaler  
+- **RAG Pipeline:**  
+  - Sentence Transformers (`all-MiniLM-L6-v2`) for embeddings  
+  - FAISS vector database for fast retrieval  
+  - OpenAI GPT-3.5 for generation (grounded in guidelines)  
+- **Data:** WHO, Surviving Sepsis Campaign, CDC guideline PDFs  
 
-Ask clinical questions → get guideline-grounded answers with citations (via RAG).
+---
 
-Workflow:
-Vitals in ➝ Scores + Cluster ➝ Question ➝ Evidence-based recommendation.
+## 📂 Project Structure
 
-# Tech Stack
-
-Frontend: Streamlit (Python-based UI)
-
-Risk Scoring: Pure Python implementations of NEWS2, qSOFA, SIRS
-
-ML Profiling: KMeans clustering + StandardScaler
-
-RAG Pipeline:
-
-Sentence Transformers (all-MiniLM-L6-v2) for embeddings
-
-FAISS vector database for fast retrieval
-
-OpenAI GPT-3.5 for generation, grounded in guidelines
-
-Data: Medical guideline PDFs (WHO, Surviving Sepsis Campaign, CDC)
-
-# Project Structure
+```bash
 sepsis-rag-assistant/
 ├── app.py                # Streamlit app (main entry)
 ├── scoring.py            # NEWS2, qSOFA, SIRS scoring functions
@@ -63,12 +59,15 @@ sepsis-rag-assistant/
 │   └── processed/        # FAISS index + chunks/sources
 └── README.md             # Project documentation
 
-# Getting Started
-1. Clone the repo
+🚀 Getting Started
+
+Follow these steps to set up and run the project locally:
+
+1. Clone the repository
 git clone https://github.com/<your-username>/sepsis-rag-assistant.git
 cd sepsis-rag-assistant
 
-2. Create virtual environment (Python 3.10 recommended)
+2. Create a virtual environment (Python 3.10 recommended)
 python -m venv .venv
 source .venv/bin/activate    # macOS/Linux
 .venv\Scripts\activate       # Windows
@@ -77,34 +76,34 @@ source .venv/bin/activate    # macOS/Linux
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
-4. Add API key
+4. Add your OpenAI API key
 
-Create a .env file:
+Create a .env file in the project root:
 
 OPENAI_API_KEY=sk-xxxx
 
 5. Prepare guideline data
 
-Place PDF files in data/guidelines/ and run:
+Place guideline PDFs in data/guidelines/ and run:
 
 python data_prep.py
 
 6. Run the app
 streamlit run app.py --server.port 8501
 
-# Features
+✨ Features
 
-Real-time calculation of NEWS2, qSOFA, SIRS
+⚡ Real-time calculation of NEWS2, qSOFA, SIRS
 
-KMeans clustering for patient risk profiling
+📊 KMeans clustering for patient risk profiling
 
-Evidence-based recommendations with citations from guidelines
+📚 Evidence-based recommendations with citations from medical guidelines
 
-Interactive Q&A with RAG assistant
+💬 Interactive Q&A with RAG assistant
 
-Demo scenarios for High / Medium / Low risk
+🧪 Demo scenarios for High / Medium / Low risk patients
 
-# Impact
+🌍 Impact
 
 Doctors save minutes → Patients gain hours.
 
@@ -112,34 +111,34 @@ Potential to save 100k–200k lives annually if deployed at scale.
 
 Trusted, affordable, and globally scalable.
 
-# Challenges Faced
+🧩 Challenges
 
-Aligning FAISS, LangChain, OpenAI SDK with Python environment.
+Aligning FAISS, LangChain, OpenAI SDK in Python environments.
 
 Preprocessing messy medical PDFs.
 
 Balancing clinical accuracy with a working demo in 36 hours.
 
-Making Streamlit lightweight enough for low-resource settings.
+Keeping Streamlit lightweight for low-resource hospitals.
 
-# Future Work
+🔮 Future Work
 
-Expand to other conditions (pneumonia, dengue, trauma, obstetrics).
+Expand to other conditions: pneumonia, dengue, trauma, obstetrics.
 
 Mobile-first design for rural clinics.
 
 EMR integration for real-time vitals.
 
-Multilingual support.
+Multilingual support for non-English healthcare settings.
 
 Paid SaaS model with analytics + compliance for hospitals.
 
-# Team 4Bytes
+👨‍💻 Team 4Bytes
 
-Ansh Agarwal[RA2411003011202]
+Ansh Agarwal 
 
-Adithya S[RA2411003011210]
+Adithya S 
 
-Sayan Basu[RA2411003011220]
+Sayan Basu
 
-Kanishk Jaiswal[RA2411003011180]
+Kanishk Jaiswal 
