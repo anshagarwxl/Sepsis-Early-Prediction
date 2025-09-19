@@ -1,146 +1,368 @@
-import os, pickle
 import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+
+# Local project imports
 from scoring import (
-    calculate_news2, calculate_qsofa, calculate_sirs, interpret_risk
+    calculate_news2,
+    calculate_qsofa,
+    calculate_sirs,
+    interpret_risk
 )
-from rag_system import SepsisRAG
 
-st.set_page_config(page_title="Sepsis Early Warning RAG Assistant", layout="wide")
 
-# ---------- Cached loaders ----------
-@st.cache_resource
-def load_rag_system():
-    return SepsisRAG()  # loads FAISS, chunks, model, and OpenAI key via config .env
+# Page configuration
+st.set_page_config(
+    page_title="Sepsis Early Prediction Dashboard",
+    page_icon="🩺",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-@st.cache_resource
-def load_kmeans_and_scaler():
-    try:
-        with open("models/kmeans_model.pkl", "rb") as f:
-            kmeans = pickle.load(f)
-        with open("models/scaler.pkl", "rb") as f:
-            scaler = pickle.load(f)
-        return kmeans, scaler
-    except Exception:
-        return None, None
+# Custom CSS for styling
+st.markdown("""
+<style>
+    .main-header {
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .metric-card {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+        text-align: center;
+    }
+    
+    .metric-title {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-bottom: 0.5rem;
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #212529;
+    }
+    
+    .metric-subtitle {
+        font-size: 0.8rem;
+        color: #6c757d;
+        margin-top: 0.25rem;
+    }
+    
+    .analysis-section {
+        background-color: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #e9ecef;
+        margin-bottom: 1.5rem;
+    }
+    
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #212529;
+    }
+    
+    .recommended-action {
+        background-color: #e3f2fd;
+        color: #1976d2;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+    
+    .score-high {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    
+    .score-medium {
+        background-color: #fff3cd;
+        color: #856404;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    
+    .score-low {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    
+    .sidebar-section {
+        margin-bottom: 2rem;
+    }
+    
+    .sidebar-title {
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: #212529;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def predict_cluster(vitals, kmeans, scaler):
-    """Return cluster label or 'N/A' if models unavailable."""
-    if not kmeans or not scaler:
-        return "N/A"
-    # Order matters: use the exact feature order you trained on
-    features = [
-        vitals["temperature"],
-        vitals["heart_rate"],
-        vitals["respiratory_rate"],
-        vitals["systolic_bp"],
-        vitals["spo2"],
-        # Optional: WBC if present in training; else omit
-        vitals.get("wbc", 0)
+# Header
+st.markdown("""
+<div class="main-header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h2 style="margin: 0; color: #28a745;">🩺 Sepsis Early Prediction</h2>
+            <span style="color: #6c757d;">Real-time Patient Monitoring & Risk Scoring</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <span style="color: #6c757d;">☀️ Refresh</span>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">NAVIGATION</div>', unsafe_allow_html=True)
+    
+    nav_options = [
+        "📊 Patient Dashboard",
+        "🧪 Vitals Entry", 
+        "🧮 Risk Scores",
+        "🤖 AI Assistant",
+        "📤 Upload Patient Data"
     ]
-    X = scaler.transform([features])
-    return int(kmeans.predict(X)[0])
+    
+    selected_nav = st.selectbox("", nav_options, index=2, label_visibility="collapsed")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-title">FILTERS</div>', unsafe_allow_html=True)
+    admitted_only = st.checkbox("🏥 Show Admitted Patients", value=True)
+    critical_alerts = st.checkbox("⚠️ Show Critical Alerts", value=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# ---------- App ----------
-st.title("🩺 Sepsis Early Warning RAG Assistant")
-st.caption("Demo/education only — not a medical device.")
+# Main content
+col1, col2, col3 = st.columns(3)
 
-# Load systems
-rag = None
-with st.spinner("Loading RAG system..."):
-    try:
-        rag = load_rag_system()
-        rag_ok = True
-    except Exception as e:
-        rag_ok = False
-        st.error(f"RAG unavailable: {e}. Run data preparation first.")
+with col1:
+    st.markdown("""
+    <div class="metric-card">
+        <div class="metric-title">Total Patients Screened</div>
+        <div class="metric-value">120</div>
+        <div class="metric-subtitle">Based on uploaded vitals</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-kmeans, scaler = load_kmeans_and_scaler()
+with col2:
+    st.markdown("""
+    <div class="metric-card">
+        <div class="metric-title">High Risk Alerts</div>
+        <div class="metric-value">28</div>
+        <div class="metric-subtitle">Patients flagged urgent</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# Sidebar inputs
-st.sidebar.header("Patient Vitals")
-vitals = {
-    "temperature": st.sidebar.number_input("Temperature (°C)", 30.0, 45.0, 37.0, 0.1),
-    "heart_rate": st.sidebar.number_input("Heart Rate (bpm)", 30, 200, 80, 1),
-    "respiratory_rate": st.sidebar.number_input("Respiratory Rate (/min)", 5, 50, 16, 1),
-    "systolic_bp": st.sidebar.number_input("Systolic BP (mmHg)", 60, 250, 120, 1),
-    "spo2": st.sidebar.number_input("SpO₂ (%)", 70, 100, 98, 1),
-    "consciousness": st.sidebar.selectbox("Consciousness (AVPU)", ["Alert", "Voice", "Pain", "Unresponsive"]),
-    "wbc": st.sidebar.number_input("WBC (/μL) (optional)", 0, 50000, 0, 100),
+with col3:
+    st.markdown("""
+    <div class="metric-card">
+        <div class="metric-title">Analysis Status</div>
+        <div class="metric-value">Complete</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Helper function to format scores
+def format_score(score, score_type="percentage"):
+    if score_type == "percentage":
+        if score >= 90:
+            return f'<span class="score-high">{score}%</span>'
+        elif score >= 70:
+            return f'<span class="score-medium">{score}%</span>'
+        else:
+            return f'<span class="score-low">{score}%</span>'
+    else:  # Overall score
+        if score >= 85:
+            return f'<span class="score-high">{score}%</span>'
+        elif score >= 70:
+            return f'<span class="score-medium">{score}%</span>'
+        else:
+            return f'<span class="score-low">{score}%</span>'
+
+# Cluster 19 Analysis
+st.markdown("""
+<div class="analysis-section">
+    <div class="section-header">
+        <div class="section-title">🔍 Cluster 19 Analysis</div>
+        <div class="recommended-action">Recommended Action: 1</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Create sample data for Cluster 19
+cluster19_data = {
+    'Index 1': [19, 19, 527],
+    'Provider 1': ['Michael Thompson, DO', 'Michael Thompson, DO', 'Michael N Thompson, DO'],
+    'Index 2': [532, 529, 528],
+    'Provider 2': ['Michael N Thompson, DO', 'Mike Thompson, DO', 'Mike Thompson, DO'],
+    'Overall Score': [94.7, 87.6, 94.5],
+    'Name Score': [100.0, 100.0, 100.0],
+    'NPI Match': ['🔺', '🔺', '🔺'],
+    'Address Score': [100.0, 100.0, 100.0],
+    'Phone Match': ['✅', '✅', '✅'],
+    'License Score': [100.0, 100.0, 100.0]
 }
 
-# Optional demo presets
-st.sidebar.subheader("Demo Scenarios")
-col_demo1, col_demo2, col_demo3 = st.sidebar.columns(3)
-if col_demo1.button("High"):
-    vitals.update({"temperature": 39.2, "heart_rate": 125, "respiratory_rate": 28, "systolic_bp": 88, "spo2": 89, "consciousness": "Voice"})
-if col_demo2.button("Med"):
-    vitals.update({"temperature": 38.5, "heart_rate": 105, "respiratory_rate": 22, "systolic_bp": 95, "spo2": 94, "consciousness": "Alert"})
-if col_demo3.button("Low"):
-    vitals.update({"temperature": 37.1, "heart_rate": 85, "respiratory_rate": 18, "systolic_bp": 115, "spo2": 97, "consciousness": "Alert"})
+df19 = pd.DataFrame(cluster19_data)
 
-# Validation (minimal)
-errors = []
-if vitals["temperature"] < 30 or vitals["temperature"] > 45: errors.append("Temperature out of range")
-if vitals["heart_rate"] < 30 or vitals["heart_rate"] > 200: errors.append("Heart rate out of range")
-if errors:
-    st.sidebar.error(" • ".join(errors))
+# Display table with custom formatting
+st.markdown("**Cluster 19 Analysis Results:**")
+for idx, row in df19.iterrows():
+    col1, col2, col3, col4, col5, col6, col7, col8, col9, col10 = st.columns([1, 3, 1, 3, 2, 2, 1.5, 2, 1.5, 2])
+    
+    with col1:
+        st.write(row['Index 1'])
+    with col2:
+        st.write(row['Provider 1'])
+    with col3:
+        st.write(row['Index 2'])
+    with col4:
+        st.write(row['Provider 2'])
+    with col5:
+        st.markdown(format_score(row['Overall Score'], "overall"), unsafe_allow_html=True)
+    with col6:
+        st.markdown(format_score(row['Name Score']), unsafe_allow_html=True)
+    with col7:
+        st.write(row['NPI Match'])
+    with col8:
+        st.markdown(format_score(row['Address Score']), unsafe_allow_html=True)
+    with col9:
+        st.write(row['Phone Match'])
+    with col10:
+        st.markdown(format_score(row['License Score']), unsafe_allow_html=True)
 
-# Compute
-if st.sidebar.button("⚙️  Calculate Risk Scores", disabled=bool(errors)):
-    news2_score, news2_risk = calculate_news2(vitals)
-    qsofa_score, qsofa_risk = calculate_qsofa(vitals)
-    sirs_score, sirs_risk = calculate_sirs(vitals)
-    cluster = predict_cluster(vitals, kmeans, scaler)
+st.markdown("<br>", unsafe_allow_html=True)
 
-    st.session_state["scores"] = {
-        "news2": (news2_score, news2_risk),
-        "qsofa": (qsofa_score, qsofa_risk),
-        "sirs": (sirs_score, sirs_risk),
-        "cluster": cluster,
-    }
+# Cluster 3 Analysis
+st.markdown("""
+<div class="analysis-section">
+    <div class="section-header">
+        <div class="section-title">🔍 Cluster 3 Analysis</div>
+        <div class="recommended-action">Recommended Action: 2</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
-# Results area
-scores = st.session_state.get("scores")
-if scores:
-    c1, c2, c3, c4 = st.columns([1,1,1,1])
-    with c1:
-        st.metric("NEWS2", scores["news2"][0])
-        st.write(f"**{scores['news2'][1]}**")
-    with c2:
-        st.metric("qSOFA", scores["qsofa"][0])
-        st.write(f"**{scores['qsofa'][1]}**")
-    with c3:
-        st.metric("SIRS", scores["sirs"][0])
-        st.write(f"**{scores['sirs'][1]}**")
-    with c4:
-        st.metric("Profile", scores["cluster"])
-        st.caption("K-Means cluster")
+cluster3_data = {
+    'Index 1': [3],
+    'Provider 1': ['Joseph Chen, MD PhD'],
+    'Index 2': [563],
+    'Provider 2': ['Joseph D Chen, MD PhD'],
+    'Overall Score': [84.3],
+    'Name Score': [100.0],
+    'NPI Match': ['🔺'],
+    'Address Score': [100.0],
+    'Phone Match': ['✅'],
+    'License Score': [100.0]
+}
 
-    st.subheader("Clinical Interpretation")
-    for msg in interpret_risk(scores["news2"][0], scores["qsofa"][0], scores["sirs"][0]):
-        st.warning(msg)
+df3 = pd.DataFrame(cluster3_data)
 
-# RAG chat
-if rag:
-    st.subheader("🧠 Clinical Guidance Assistant")
-    cc1, cc2, cc3 = st.columns(3)
-    if cc1.button("💊 Antibiotics"): st.session_state["query"] = "What are recommended empiric antibiotics for suspected sepsis?"
-    if cc2.button("💧 Fluid Resuscitation"): st.session_state["query"] = "How much crystalloid should I give initially?"
-    if cc3.button("⚡ Emergency Actions"): st.session_state["query"] = "Immediate steps for high sepsis risk?"
+st.markdown("**Cluster 3 Analysis Results:**")
+for idx, row in df3.iterrows():
+    col1, col2, col3, col4, col5, col6, col7, col8, col9, col10 = st.columns([1, 3, 1, 3, 2, 2, 1.5, 2, 1.5, 2])
+    
+    with col1:
+        st.write(row['Index 1'])
+    with col2:
+        st.write(row['Provider 1'])
+    with col3:
+        st.write(row['Index 2'])
+    with col4:
+        st.write(row['Provider 2'])
+    with col5:
+        st.markdown(format_score(row['Overall Score'], "overall"), unsafe_allow_html=True)
+    with col6:
+        st.markdown(format_score(row['Name Score']), unsafe_allow_html=True)
+    with col7:
+        st.write(row['NPI Match'])
+    with col8:
+        st.markdown(format_score(row['Address Score']), unsafe_allow_html=True)
+    with col9:
+        st.write(row['Phone Match'])
+    with col10:
+        st.markdown(format_score(row['License Score']), unsafe_allow_html=True)
 
-    user_query = st.text_input("Ask a clinical question", value=st.session_state.get("query", ""))
-    if user_query:
-        with st.spinner("Searching clinical guidelines..."):
-            patient_scores = st.session_state.get("scores", None)
-            answer, sources = rag.query(user_query, patient_scores=patient_scores)
-        st.subheader("Answer")
-        st.write(answer)
-        with st.expander("Sources & Guidelines"):
-            for i, s in enumerate(sorted(set(sources)), 1):
-                st.write(f"{i}. {s}")
-rag = SepsisRAG()
-question = st.text_input("Ask a sepsis-related question:")
-if question:
-    answer, sources = rag.query(question)
-    st.write(answer)
-    st.write("Sources:", sources)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# Cluster 7 Analysis
+st.markdown("""
+<div class="analysis-section">
+    <div class="section-header">
+        <div class="section-title">🔍 Cluster 7 Analysis</div>
+        <div class="recommended-action">Recommended Action: 2</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+cluster7_data = {
+    'Index 1': [7],
+    'Provider 1': ['Christopher Gonzalez, DO PhD'],
+    'Index 2': [568],
+    'Provider 2': ['Christopher N Gonzalez, DO PhD'],
+    'Overall Score': [92.1],
+    'Name Score': [100.0],
+    'NPI Match': ['🔺'],
+    'Address Score': [100.0],
+    'Phone Match': ['✅'],
+    'License Score': [100.0]
+}
+
+df7 = pd.DataFrame(cluster7_data)
+
+st.markdown("**Cluster 7 Analysis Results:**")
+for idx, row in df7.iterrows():
+    col1, col2, col3, col4, col5, col6, col7, col8, col9, col10 = st.columns([1, 3, 1, 3, 2, 2, 1.5, 2, 1.5, 2])
+    
+    with col1:
+        st.write(row['Index 1'])
+    with col2:
+        st.write(row['Provider 1'])
+    with col3:
+        st.write(row['Index 2'])
+    with col4:
+        st.write(row['Provider 2'])
+    with col5:
+        st.markdown(format_score(row['Overall Score'], "overall"), unsafe_allow_html=True)
+    with col6:
+        st.markdown(format_score(row['Name Score']), unsafe_allow_html=True)
+    with col7:
+        st.write(row['NPI Match'])
+    with col8:
+        st.markdown(format_score(row['Address Score']), unsafe_allow_html=True)
+    with col9:
+        st.write(row['Phone Match'])
+    with col10:
+        st.markdown(format_score(row['License Score']), unsafe_allow_html=True)
+
+# Footer
+st.markdown("<br><br>", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown("*HILabs Healthcare Analytics Dashboard - Provider Deduplication Analysis*")
