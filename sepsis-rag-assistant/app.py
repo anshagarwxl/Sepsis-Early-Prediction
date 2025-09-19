@@ -11,6 +11,11 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ------------------------- Page & Theme ------------------------- #
 st.set_page_config(page_title="Sepsis RAG Assistant", page_icon="🩺", layout="wide")
@@ -116,6 +121,22 @@ try:
 except Exception:
     SepsisRAG = None
 
+# Configure Gemini API
+try:
+    from config.settings import GEMINI_API_KEY
+except Exception:
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+# Ensure API key is available for RAG system
+if not GEMINI_API_KEY:
+    # Try one more time to get from environment
+    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    st.warning("⚠️ GEMINI_API_KEY not found. RAG system will run in fallback mode.")
+
 # ------------------------- State & Navigation ------------------------- #
 def init_state():
     st.session_state.setdefault("route", "AUTH")
@@ -155,7 +176,7 @@ def go_back():
 def load_rag_system():
     if SepsisRAG is None:
         raise RuntimeError("RAG backend not available (rag_system.py missing)")
-    return SepsisRAG()
+    return SepsisRAG(gemini_api_key=GEMINI_API_KEY)
 
 @st.cache_resource
 def load_kmeans_and_scaler():
