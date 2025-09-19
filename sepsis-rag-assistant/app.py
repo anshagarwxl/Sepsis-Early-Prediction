@@ -47,105 +47,26 @@ st.set_page_config(
 MODEL_PATH = Path("models/knn_sepsis_model.joblib")
 META_PATH  = Path("models/meta.json")
 
-# -------------------- Global CSS / Theme --------------------
 GLASS_CSS = """
 <style>
 :root{
-  --bg-a: #0a0f1b;
-  --bg-b: #0b1220;
-  --bg-c: #0e1530;
-  --panel: rgba(255,255,255,.06);
-  --panel-2: rgba(255,255,255,.08);
-  --panel-3: rgba(255,255,255,.05);
-  --border: rgba(255,255,255,.12);
-  --ink: rgba(255,255,255,.98);
-  --muted: rgba(255,255,255,.70);
-  --green: #00d1a7;
-  --amber: #ffcc66;
-  --red: #ff6b6b;
-  --blue: #7fd3ff;
-  --violet: #a78bfa;
-  --pink: #ff9bd2;
+  /* ... keep your variables ... */
 }
 
-html, body, .stApp {
-  background: radial-gradient(80% 140% at 10% 10%, var(--bg-a) 0%, var(--bg-b) 55%, var(--bg-c) 100%);
-  color: var(--ink);
-}
+/* App background, etc... */
 
+/* LEFT DIVISION (SIDEBAR) COLOR */
 [data-testid="stSidebar"] > div {
-  background: var(--panel);
+  /* Change this to whatever you like */
+  background: linear-gradient(180deg, #1a1f2e 0%, #0b1220 100%);
   backdrop-filter: blur(12px) saturate(140%);
   border-right: 1px solid var(--border);
 }
 
-.main .block-container {
-  padding-top: 0.8rem;
-}
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 18px 18px 16px 18px;
-  backdrop-filter: blur(14px) saturate(160%);
-  box-shadow: 0 12px 40px rgba(0,0,0,.35);
-}
-
-.tile {
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 14px 16px;
-}
-
-.soft {
-  background: var(--panel-3);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 12px 14px;
-}
-
-.kpi {
-  font-weight: 800;
-  font-size: 26px;
-}
-.kpi-sub {
-  color: var(--muted);
-  font-size: 12px;
-  margin-top: 4px;
-}
-
-.hr { height:1px; background:var(--border); margin: 10px 0 16px 0; }
-
-.pill {
-  display: inline-block;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-weight: 800;
-  letter-spacing: .2px;
-  font-size: 12px;
-}
-.pill.low  { background: rgba(0,209,167,.12); color: var(--green); }
-.pill.med  { background: rgba(255,204,102,.14); color: var(--amber); }
-.pill.high { background: rgba(255,107,107,.14); color: var(--red); }
-.pill.ml   { background: rgba(127,211,255,.14); color: var(--blue); }
-
-h1, h2, h3 { color: var(--ink); }
-small, .muted { color: var(--muted); }
-
-.stButton>button {
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  background: linear-gradient(135deg, var(--blue), var(--violet));
-  color: #06131f;
-  font-weight: 900;
-}
-
-a, a:visited { color: var(--blue) !important; text-decoration: none; }
+/* ... rest of your CSS ... */
 </style>
 """
-st.markdown(GLASS_CSS, unsafe_allow_html=True)
+
 
 # -------------------- Animated Hero --------------------
 HERO = """
