@@ -1,3 +1,33 @@
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+
+# Local project imports
+from scoring import (
+    calculate_news2,
+    calculate_qsofa,
+    calculate_sirs,
+    interpret_risk
+)
+
+
+# Page configuration
+st.set_page_config(
+    page_title="Sepsis Early Prediction Dashboard",
+    page_icon="🩺",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+=======
+# app.py
+# Sepsis RAG Assistant — Auth → Home (nebula hero) → Chat or Vitals (tabs)
+# Glassmorphism, responsive, back/home navigation, no blank pages
+>>>>>>> origin/main
+
 # app.py
 # Sepsis Risk Assistant — Dark Glassmorphism PRO
 # --------------------------------------------------------------
@@ -23,8 +53,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
-# ---- Importing scoring models ---- 
-from scoring import news2, qsofa, sirs
 
 # ---- Optional libs (safe fallbacks) ----
 try:
@@ -47,7 +75,7 @@ st.set_page_config(
 )
 
 # Paths for optional ML pipeline
-MODEL_PATH = Path("models/kmeans_model.pkl") 
+MODEL_PATH = Path("models/knn_sepsis_model.joblib") 
 META_PATH  = Path("models/meta.json")
 
 # -------------------- Global CSS / Theme --------------------
@@ -188,6 +216,75 @@ SCHEMA = [
 ]
 if "data" not in st.session_state:
     st.session_state["data"] = pd.DataFrame(columns=SCHEMA)
+
+<<<<<<< HEAD
+# -------------------- ML Loader --------------------
+@st.cache_resource(show_spinner=False)
+def load_ml():
+    if joblib is None or not MODEL_PATH.exists() or not META_PATH.exists():
+        return None, {}
+    try:
+        model = joblib.load(MODEL_PATH)
+        meta  = json.loads(META_PATH.read_text())
+        return model, meta
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Could not load ML model: {e}")
+        return None, {}
+
+MODEL, META = load_ml()
+=======
+# ------------------------- Optional project modules ------------------------- #
+try:
+    from scoring import calculate_news2, calculate_qsofa, calculate_sirs, interpret_risk
+except Exception:
+    calculate_news2 = calculate_qsofa = calculate_sirs = interpret_risk = None
+
+try:
+    from rag_system import SepsisRAG
+except Exception:
+    SepsisRAG = None
+
+# ------------------------- State & Navigation ------------------------- #
+def init_state():
+    st.session_state.setdefault("route", "AUTH")
+    st.session_state.setdefault("auth_user", None)
+    st.session_state.setdefault("nav_stack", [])  # for Back
+    st.session_state.setdefault("timeline", [])
+    st.session_state.setdefault("scores", None)
+    st.session_state.setdefault("vitals", {
+        "temperature": 37.0, "heart_rate": 80, "respiratory_rate": 16,
+        "systolic_bp": 120, "spo2": 98, "consciousness": "Alert", "wbc": 0
+    })
+    st.session_state.setdefault("chat", [])
+    st.session_state.setdefault("profile", {
+        "username": "", "patient_name": "", "mrn": "", "age": 0, "sex": "Male",
+        "height_cm": 0.0, "weight_kg": 0.0, "allergies": "", "comorbidities": "",
+        "chief_complaint": "", "current_meds": "", "infection_source": "",
+        "code_status": "Full Code", "notes": "", "attachments": []
+    })
+init_state()
+
+def goto(route:str):
+    # push current route to stack and go
+    if st.session_state.route != route:
+        st.session_state.nav_stack.append(st.session_state.route)
+        st.session_state.route = route
+        st.rerun()
+
+def go_back():
+    if st.session_state.nav_stack:
+        st.session_state.route = st.session_state.nav_stack.pop()
+    else:
+        st.session_state.route = "HOME"
+    st.rerun()
+
+# ------------------------- Helpers ------------------------- #
+@st.cache_resource
+def load_rag_system():
+    if SepsisRAG is None:
+        raise RuntimeError("RAG backend not available (rag_system.py missing)")
+    return SepsisRAG()
+>>>>>>> 13f805555b3536fde72e37e09b2bb701e594ca63
 
 # Custom CSS for styling
 st.markdown("""
@@ -554,6 +651,70 @@ def feature_order(meta: Dict[str, Any]) -> List[str]:
     return ["Temperature","HeartRate","RespiratoryRate","SystolicBP","DiastolicBP","SpO2","WBC","GCS","Age"]
 
 # -------------------- Clinical Scores --------------------
+def news2(temp: float, hr: float, rr: float, sbp: float, spo2: float, cons: str) -> Tuple[int,str]:
+    s = 0
+    # RR
+    if rr <= 8: s += 3
+    elif 9 <= rr <= 11: s += 1
+    elif 12 <= rr <= 20: s += 0
+    elif 21 <= rr <= 24: s += 2
+    else: s += 3
+    # SpO2 (scale 1)
+    if spo2 <= 91: s += 3
+    elif 92 <= spo2 <= 93: s += 2
+    elif 94 <= spo2 <= 95: s += 1
+    # Temp
+    if temp <= 35.0: s += 3
+    elif 35.1 <= temp <= 36.0: s += 1
+    elif 36.1 <= temp <= 38.0: s += 0
+    elif 38.1 <= temp <= 39.0: s += 1
+    else: s += 2
+    # SBP
+    if sbp <= 90: s += 3
+    elif 91 <= sbp <= 100: s += 2
+    elif 101 <= sbp <= 110: s += 1
+    # HR
+    if hr <= 40 or hr >= 131: s += 3
+    elif 111 <= hr <= 130: s += 2
+    elif 91 <= hr <= 110: s += 1
+    # Consciousness
+    if cons.lower() != "alert": s += 3
+
+    # Risk buckets + red flag
+    if s >= 7:
+        r = "High"
+    elif s >= 5:
+        r = "Medium"
+    else:
+        red = any([
+            rr <= 8 or rr >= 25,
+            spo2 <= 91,
+            temp <= 35.0 or temp >= 39.1,
+            sbp <= 90,
+            hr <= 40 or hr >= 131,
+            cons.lower() != "alert",
+        ])
+        r = "Medium" if red else "Low"
+    return s, r
+
+def qsofa(rr: float, sbp: float, gcs: float|None, cons: str) -> Tuple[int,str]:
+    s = 0
+    if rr >= 22: s += 1
+    if sbp <= 100: s += 1
+    altered = (gcs is not None and gcs < 15) or (cons.lower() != "alert")
+    if altered: s += 1
+    r = "High" if s >= 2 else ("Medium" if s == 1 else "Low")
+    return s, r
+
+def sirs(temp: float, hr: float, rr: float, wbc: float|None) -> Tuple[int,str]:
+    c = 0
+    if temp > 38.0 or temp < 36.0: c += 1
+    if hr > 90: c += 1
+    if rr > 20: c += 1
+    if wbc is not None and (wbc > 12 or wbc < 4): c += 1
+    r = "High" if c >= 3 else ("Medium" if c == 2 else "Low")
+    return c, r
+
 def compute_all(v: Dict[str, Any]) -> Dict[str, Any]:
     temp = float(v["Temperature"])
     hr   = float(v["HeartRate"])
@@ -981,3 +1142,35 @@ with tab_upload:
                     st.dataframe(df_out.head(), use_container_width=True)
         except Exception as e:
             st.error(f"Upload failed: {e}")
+
+<<<<<<< HEAD
+# -------------------- Footer --------------------
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown(
+    '<div style="text-align:center; opacity:.8;">'
+    'Sepsis Risk Assistant • Dark Glassmorphism PRO • '
+    f'Python {os.sys.version.split()[0]}'
+    '</div>',
+    unsafe_allow_html=True
+)
+=======
+# ------------------------- Router (never blank) ------------------------- #
+valid = {"AUTH","HOME","VITALS","CHAT"}
+if st.session_state.route not in valid:
+    st.session_state.route = "AUTH"
+
+if st.session_state.route == "AUTH":
+    page_auth()
+elif st.session_state.route == "HOME":
+    page_home()
+elif st.session_state.route == "VITALS":
+    page_vitals_tabs()
+elif st.session_state.route == "CHAT":
+    page_chat()
+else:
+    st.session_state.route = "AUTH"
+    st.rerun()
+// added login page
+// asadd okay
+>>>>>>> 13f805555b3536fde72e37e09b2bb701e594ca63
+>>>>>>> origin/main
