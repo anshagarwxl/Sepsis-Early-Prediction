@@ -1,0 +1,13 @@
+{
+  "features": [
+    "Respiratory Rate",
+    "SpO\u2082",
+    "Systolic Blood Pressure",
+    "Heart Rate",
+    "Temperature",
+    "Temp_Heart_Rate_Ratio",
+    "BP_Difference",
+    "Respiratory_Status",
+    "Consciousness Level"
+  ]
+}
