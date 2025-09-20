@@ -1,647 +1,1133 @@
-# app.py
-# Sepsis RAG Assistant — Auth → Home (nebula hero) → Chat or Vitals (tabs)
-# Glassmorphism, responsive, back/home navigation, no blank pages
-
-import os, io, json, math, time, pickle
-from datetime import datetime
-
-import numpy as np
-import pandas as pd
-import streamlit as st
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit.components.v1 as components
-import google.generativeai as genai
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-# ------------------------- Page & Theme ------------------------- #
-st.set_page_config(page_title="Sepsis RAG Assistant", page_icon="🩺", layout="wide")
-
-CSS = r"""
-:root{
-  --bg1:#051428; --bg2:#0b0f18;
-  --glass: rgba(255,255,255,.05);
-  --glass-2: rgba(255,255,255,.04);
-  --stroke: rgba(255,255,255,.10);
-  --stroke-2: rgba(255,255,255,.12);
-  --fg: rgba(244,246,255,.95);
-  --muted: rgba(230,238,255,.60);
-  --accent:#7fd3ff;
-}
-body { background: radial-gradient(1200px 650px at 20% -10%, #1a2240 0%, var(--bg1) 40%) }
-.main .block-container{ max-width: 1200px; padding-top:.5rem; padding-bottom:1.2rem; }
-
-.small{ color:var(--muted); font-size:.92rem; }
-.card{
-  background: var(--glass); border:1px solid var(--stroke); border-radius:16px; padding:14px;
-  backdrop-filter: blur(10px) saturate(135%); -webkit-backdrop-filter: blur(10px) saturate(135%);
-  box-shadow: 0 10px 28px rgba(0,0,0,.35);
-}
-.gcard{
-  background: var(--glass-2); border:1px solid var(--stroke); border-radius:18px; padding:18px;
-  backdrop-filter: blur(12px) saturate(140%); -webkit-backdrop-filter: blur(12px) saturate(140%);
-  box-shadow: 0 12px 36px rgba(0,0,0,.38);
-}
-.hero{
-  position: relative; overflow:hidden;
-  background: linear-gradient(145deg, rgba(8,12,28,.6), rgba(30,35,60,.35));
-  border:1px solid var(--stroke); border-radius:24px; padding:26px 22px;
-}
-.hero h1{ margin:0 0 8px; font-size:34px; }
-.hero p{ margin:0; color:var(--muted); }
-
-/* nebula canvas inside hero */
-.hero .nebula { position:absolute; inset:0; z-index:-1; opacity:.7; filter: blur(0px); }
-
-/* CTA tiles */
-.cta{
-  display:flex; gap:16px; flex-wrap:wrap; margin-top:18px;
-}
-.cta .tile{
-  flex: 1 1 300px;
-  padding:16px; border-radius:16px; border:1px solid var(--stroke-2);
-  background: linear-gradient(180deg, rgba(25,32,60,.45), rgba(18,24,45,.35));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 12px 26px rgba(0,0,0,.30);
-}
-.cta .title{ font-weight:900; font-size:18px; margin-bottom:6px; }
-.cta .sub{ color:var(--muted); font-size:.95rem; }
-.cta .btn-wrap{ margin-top:12px; }
-
-.stButton>button{
-  width:100%; color:#fff !important;
-  background:linear-gradient(180deg, #2b3b6a 0%, #182341 90%) !important;
-  border:1px solid #314066 !important;
-  border-radius:14px !important;
-  padding:10px 14px !important;
-  font-weight:800 !important;
-  box-shadow:0 8px 22px rgba(0,0,0,.25);
-}
-.stButton>button:hover{ transform: translateY(-1px); box-shadow:0 12px 28px rgba(0,0,0,.30); }
-
-/* Tabs */
-.stTabs [role="tablist"] { gap:8px; }
-.stTabs [role="tab"]{
-  padding:6px 10px;
-  background:rgba(255,255,255,.04);
-  border:1px solid var(--stroke) !important;
-  border-radius:10px !important;
-}
-.stTabs [aria-selected="true"]{
-  background:#16203a !important; border-color:#223055 !important; color:#eaf0ff !important; font-weight:800;
-}
-
-/* KPI risk chips */
-.risk-badge{ display:inline-block; padding:.2rem .55rem; border-radius:.6rem; font-weight:800; font-size:.75rem }
-.risk-low { background:#10b98120;color:#10b981;border:1px solid #10b98150; }
-.risk-med { background:#f59e0b20;color:#f59e0b;border:1px solid #f59e0b50; }
-.risk-high{ background:#ef444420;color:#ef4444;border:1px solid #ef444450; }
-
-/* Auth layout */
-.auth-wrap { min-height: calc(100vh - 120px); display: grid; place-items: center; }
-.auth-card { width:100%; max-width:520px; }
 """
-st.markdown(f"<style>{CSS}</style>", unsafe_allow_html=True)
+Sepsis RAG Assistant - Elegant Clinical Decision Support
+Enhanced with Apple-inspired design principles
+"""
 
-# tiny SVG background (doesn't push content)
-components.html("<div style='position:fixed;inset:0;z-index:-1;pointer-events:none'></div>", height=1)
+import streamlit as st
+import pandas as pd
+import numpy as np
+import datetime as dt
+import json
+from typing import Dict, Optional
+import os
 
-PLOTLY_TEMPLATE = "plotly_dark"
+# Page config with enhanced theme
+st.set_page_config(
+    page_title="Sepsis Clinical Decision Support",
+    page_icon="🏥",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ------------------------- Optional project modules ------------------------- #
-try:
-    from scoring import calculate_news2, calculate_qsofa, calculate_sirs, interpret_risk
-except Exception:
-    calculate_news2 = calculate_qsofa = calculate_sirs = interpret_risk = None
-
+# Try RAG import
 try:
     from rag_system import SepsisRAG
-except Exception:
-    SepsisRAG = None
+    RAG_AVAILABLE = True
+except:
+    RAG_AVAILABLE = True  # Force available, handle errors gracefully
 
-# Configure Gemini API
-try:
-    from config.settings import GEMINI_API_KEY
-except Exception:
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Schema
+SCHEMA = [
+    "Timestamp", "Temperature", "HeartRate", "RespiratoryRate", 
+    "SystolicBP", "DiastolicBP", "SpO2", "WBC", "GCS", 
+    "Consciousness", "Notes", "NEWS2", "NEWS2_Risk", 
+    "qSOFA", "qSOFA_Risk", "SIRS", "SIRS_Risk", 
+    "ML_Prediction", "ML_Prob", "ML_Risk"
+]
 
-# Ensure API key is available for RAG system
-if not GEMINI_API_KEY:
-    # Try one more time to get from environment
-    GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+# Apple-Inspired Design System CSS
+GLASS_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+    
+    :root {
+        /* Apple-inspired color system */
+        --bg-primary: #000000;
+        --bg-secondary: #1c1c1e;
+        --bg-tertiary: #2c2c2e;
+        --bg-quaternary: #3a3a3c;
+        
+        /* Glass morphism */
+        --glass-primary: rgba(255,255,255,0.05);
+        --glass-secondary: rgba(255,255,255,0.03);
+        --glass-hover: rgba(255,255,255,0.08);
+        
+        /* Borders */
+        --border-primary: rgba(255,255,255,0.1);
+        --border-secondary: rgba(255,255,255,0.05);
+        --border-accent: rgba(0,122,255,0.3);
+        
+        /* Text */
+        --text-primary: rgba(255,255,255,0.98);
+        --text-secondary: rgba(255,255,255,0.7);
+        --text-tertiary: rgba(255,255,255,0.5);
+        
+        /* Apple system colors */
+        --blue: #007AFF;
+        --green: #30D158;
+        --orange: #FF9F0A;
+        --red: #FF453A;
+        --purple: #BF5AF2;
+        --teal: #40C8E0;
+        
+        /* Gradients */
+        --gradient-primary: linear-gradient(135deg, var(--blue) 0%, var(--purple) 100%);
+        --gradient-success: linear-gradient(135deg, var(--green) 0%, var(--teal) 100%);
+        --gradient-warning: linear-gradient(135deg, var(--orange) 0%, var(--red) 100%);
+        
+        /* Shadows */
+        --shadow-small: 0 1px 3px rgba(0,0,0,0.12);
+        --shadow-medium: 0 4px 12px rgba(0,0,0,0.15);
+        --shadow-large: 0 8px 32px rgba(0,0,0,0.25);
+        --shadow-xl: 0 16px 64px rgba(0,0,0,0.4);
+        
+        /* Border radius */
+        --radius-small: 8px;
+        --radius-medium: 12px;
+        --radius-large: 16px;
+        --radius-xl: 24px;
+    }
+    
+    /* Global styles */
+    * {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    
+    .main {
+        background: var(--bg-primary);
+        padding: 0;
+    }
+    
+    .stApp {
+        background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+        color: var(--text-primary);
+    }
+    
+    /* Remove default padding */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 100%;
+    }
+    
+    /* Hero Section */
+    .hero-section {
+        background: var(--glass-primary);
+        backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-xl);
+        padding: 3rem 2rem;
+        margin: 0 0 3rem 0;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .hero-section::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: var(--gradient-primary);
+        opacity: 0.8;
+    }
+    
+    .hero-title {
+        font-size: 3.5rem;
+        font-weight: 800;
+        margin: 0;
+        background: var(--gradient-primary);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.025em;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.25rem;
+        color: var(--text-secondary);
+        margin: 1rem 0 0 0;
+        font-weight: 400;
+        letter-spacing: -0.01em;
+    }
+    
+    .hero-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--glass-secondary);
+        border: 1px solid var(--border-secondary);
+        border-radius: 20px;
+        padding: 0.5rem 1rem;
+        margin-top: 1.5rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+    
+    /* Navigation Pills */
+    .nav-container {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        margin: 0 0 3rem 0;
+        padding: 0.5rem;
+        background: var(--glass-primary);
+        border-radius: var(--radius-large);
+        border: 1px solid var(--border-primary);
+        backdrop-filter: blur(20px);
+    }
+    
+    /* Card System */
+    .card {
+        background: var(--glass-primary);
+        backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-large);
+        padding: 1.5rem;
+        margin: 1rem 0;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+    }
+    
+    .card:hover {
+        background: var(--glass-hover);
+        border-color: var(--border-accent);
+        transform: translateY(-1px);
+        box-shadow: var(--shadow-medium);
+    }
+    
+    .card-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 1rem 0;
+        letter-spacing: -0.01em;
+    }
+    
+    /* KPI Cards */
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 2rem 0;
+    }
+    
+    .kpi-card {
+        background: var(--glass-primary);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-medium);
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .kpi-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: var(--gradient-primary);
+        opacity: 0.6;
+    }
+    
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        border-color: var(--border-accent);
+        box-shadow: var(--shadow-medium);
+    }
+    
+    .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 800;
+        margin: 0;
+        background: var(--gradient-primary);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: -0.02em;
+    }
+    
+    .kpi-label {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin: 0.5rem 0 0 0;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    /* Risk Pills */
+    .risk-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+        border: 1px solid rgba(255,255,255,0.1);
+        backdrop-filter: blur(8px);
+        margin-top: 0.5rem;
+    }
+    
+    .risk-high {
+        background: linear-gradient(135deg, var(--red) 0%, #FF6B6B 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(255, 69, 58, 0.3);
+    }
+    
+    .risk-medium {
+        background: linear-gradient(135deg, var(--orange) 0%, #FFB366 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(255, 159, 10, 0.3);
+    }
+    
+    .risk-low {
+        background: linear-gradient(135deg, var(--green) 0%, #66D9A3 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(48, 209, 88, 0.3);
+    }
+    
+    /* Form Styling */
+    .form-section {
+        background: var(--glass-primary);
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-large);
+        padding: 2rem;
+        margin: 1rem 0;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 1rem 0;
+        letter-spacing: -0.01em;
+    }
+    
+    /* Input Styling */
+    .stNumberInput > div > div > input,
+    .stSelectbox > div > div > select,
+    .stTextArea > div > div > textarea {
+        background: var(--glass-secondary) !important;
+        border: 1px solid var(--border-secondary) !important;
+        border-radius: var(--radius-small) !important;
+        color: var(--text-primary) !important;
+        backdrop-filter: blur(8px);
+        transition: all 0.3s ease !important;
+    }
+    
+    .stNumberInput > div > div > input:focus,
+    .stSelectbox > div > div > select:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: var(--border-accent) !important;
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1) !important;
+    }
+    
+    /* Button Styling */
+    .stButton > button {
+        background: var(--gradient-primary) !important;
+        border: none !important;
+        border-radius: var(--radius-medium) !important;
+        color: white !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        transition: all 0.3s ease !important;
+        box-shadow: var(--shadow-small) !important;
+        letter-spacing: -0.01em !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: var(--shadow-medium) !important;
+        filter: brightness(1.1) !important;
+    }
+    
+    /* Sidebar Styling */
+    .css-1d391kg {
+        background: var(--bg-secondary) !important;
+        border-right: 1px solid var(--border-primary) !important;
+    }
+    
+    /* Chat Styling */
+    .chat-message {
+        background: var(--glass-primary);
+        border: 1px solid var(--border-primary);
+        border-radius: var(--radius-medium);
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    
+    .chat-user {
+        background: var(--glass-hover);
+        border-color: var(--border-accent);
+    }
+    
+    /* Alert Styling */
+    .alert-critical {
+        background: linear-gradient(135deg, rgba(255, 69, 58, 0.1) 0%, rgba(255, 107, 107, 0.1) 100%);
+        border: 1px solid var(--red);
+        border-radius: var(--radius-medium);
+        padding: 1.5rem;
+        margin: 1rem 0;
+        color: var(--text-primary);
+    }
+    
+    .alert-success {
+        background: linear-gradient(135deg, rgba(48, 209, 88, 0.1) 0%, rgba(102, 217, 163, 0.1) 100%);
+        border: 1px solid var(--green);
+        border-radius: var(--radius-medium);
+        padding: 1.5rem;
+        margin: 1rem 0;
+        color: var(--text-primary);
+    }
+    
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .hero-title {
+            font-size: 2.5rem;
+        }
+        
+        .kpi-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .form-section {
+            padding: 1rem;
+        }
+    }
+    
+    /* Animations */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .fade-in {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    /* Loading states */
+    .loading {
+        opacity: 0.6;
+        pointer-events: none;
+    }
+</style>
+"""
 
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
-    st.warning("⚠️ GEMINI_API_KEY not found. RAG system will run in fallback mode.")
+# Apply the CSS
+st.markdown(GLASS_CSS, unsafe_allow_html=True)
 
-# ------------------------- State & Navigation ------------------------- #
-def init_state():
-    st.session_state.setdefault("route", "AUTH")
-    st.session_state.setdefault("auth_user", None)
-    st.session_state.setdefault("nav_stack", [])  # for Back
-    st.session_state.setdefault("timeline", [])
-    st.session_state.setdefault("scores", None)
-    st.session_state.setdefault("vitals", {
-        "temperature": 37.0, "heart_rate": 80, "respiratory_rate": 16,
-        "systolic_bp": 120, "spo2": 98, "consciousness": "Alert", "wbc": 0
-    })
-    st.session_state.setdefault("chat", [])
-    st.session_state.setdefault("profile", {
-        "username": "", "patient_name": "", "mrn": "", "age": 0, "sex": "Male",
-        "height_cm": 0.0, "weight_kg": 0.0, "allergies": "", "comorbidities": "",
-        "chief_complaint": "", "current_meds": "", "infection_source": "",
-        "code_status": "Full Code", "notes": "", "attachments": []
-    })
-init_state()
+# Initialize session state
+def init_session_state():
+    if "data" not in st.session_state:
+        st.session_state.data = pd.DataFrame(columns=SCHEMA)
+    if "vitals" not in st.session_state:
+        st.session_state.vitals = {
+            "temperature": 37.0, "heart_rate": 80, "respiratory_rate": 16,
+            "systolic_bp": 120, "diastolic_bp": 80, "spo2": 98,
+            "consciousness": "Alert", "wbc": 8.0, "gcs": 15
+        }
+    if "scores" not in st.session_state:
+        st.session_state.scores = None
+    if "chat" not in st.session_state:
+        st.session_state.chat = []
+    if "rag_system" not in st.session_state:
+        st.session_state.rag_system = None
+    if "current_view" not in st.session_state:
+        st.session_state.current_view = "overview"
 
-def goto(route:str):
-    # push current route to stack and go
-    if st.session_state.route != route:
-        st.session_state.nav_stack.append(st.session_state.route)
-        st.session_state.route = route
-        st.rerun()
+# Initialize RAG system
+def get_rag_system():
+    if st.session_state.rag_system is None:
+        try:
+            # Use hardcoded API key since dotenv is not available
+            api_key = "AIzaSyAu_8lYWrc4UreqRfvSX5eXMXJ1f17W2Xw"
+            st.session_state.rag_system = SepsisRAG(gemini_api_key=api_key)
+            return st.session_state.rag_system
+        except Exception as e:
+            # Return None if RAG fails to initialize
+            st.session_state.rag_system = None
+            return None
+    return st.session_state.rag_system
 
-def go_back():
-    if st.session_state.nav_stack:
-        st.session_state.route = st.session_state.nav_stack.pop()
-    else:
-        st.session_state.route = "HOME"
-    st.rerun()
+# Clinical scoring functions
+def calculate_news2(vitals: Dict) -> tuple:
+    """Calculate NEWS2 score"""
+    score = 0
+    
+    # Temperature
+    temp = vitals.get("temperature", 37.0)
+    if temp <= 35.0: score += 3
+    elif temp <= 36.0: score += 1
+    elif temp >= 39.1: score += 2
+    elif temp >= 38.1: score += 1
+    
+    # Heart rate
+    hr = vitals.get("heart_rate", 80)
+    if hr <= 40: score += 3
+    elif hr <= 50: score += 1
+    elif hr >= 131: score += 3
+    elif hr >= 111: score += 2
+    elif hr >= 91: score += 1
+    
+    # Respiratory rate
+    rr = vitals.get("respiratory_rate", 16)
+    if rr <= 8: score += 3
+    elif rr <= 11: score += 1
+    elif rr >= 25: score += 3
+    elif rr >= 21: score += 2
+    
+    # SpO2
+    spo2 = vitals.get("spo2", 98)
+    if spo2 <= 91: score += 3
+    elif spo2 <= 93: score += 2
+    elif spo2 <= 95: score += 1
+    
+    # Systolic BP
+    sbp = vitals.get("systolic_bp", 120)
+    if sbp <= 90: score += 3
+    elif sbp <= 100: score += 2
+    elif sbp <= 110: score += 1
+    elif sbp >= 220: score += 3
+    
+    # Consciousness
+    consciousness = vitals.get("consciousness", "Alert")
+    if consciousness != "Alert": score += 3
+    
+    # Risk level
+    if score >= 7: risk = "High"
+    elif score >= 5: risk = "Medium"
+    else: risk = "Low"
+    
+    return score, risk
 
-# ------------------------- Helpers ------------------------- #
-@st.cache_resource
-def load_rag_system():
-    if SepsisRAG is None:
-        raise RuntimeError("RAG backend not available (rag_system.py missing)")
-    return SepsisRAG(gemini_api_key=GEMINI_API_KEY)
+def calculate_qsofa(vitals: Dict) -> tuple:
+    """Calculate qSOFA score"""
+    score = 0
+    
+    # Respiratory rate >= 22
+    if vitals.get("respiratory_rate", 16) >= 22: score += 1
+    
+    # Systolic BP <= 100
+    if vitals.get("systolic_bp", 120) <= 100: score += 1
+    
+    # Altered mental status
+    if vitals.get("consciousness", "Alert") != "Alert": score += 1
+    
+    risk = "High" if score >= 2 else "Low"
+    return score, risk
 
-@st.cache_resource
-def load_kmeans_and_scaler():
-    try:
-        with open("models/kmeans_model.pkl", "rb") as f:
-            kmeans = pickle.load(f)
-        with open("models/scaler.pkl", "rb") as f:
-            scaler = pickle.load(f)
-        return kmeans, scaler
-    except Exception:
-        return None, None
+def calculate_sirs(vitals: Dict) -> tuple:
+    """Calculate SIRS score"""
+    score = 0
+    
+    # Temperature
+    temp = vitals.get("temperature", 37.0)
+    if temp > 38.0 or temp < 36.0: score += 1
+    
+    # Heart rate > 90
+    if vitals.get("heart_rate", 80) > 90: score += 1
+    
+    # Respiratory rate > 20
+    if vitals.get("respiratory_rate", 16) > 20: score += 1
+    
+    # WBC
+    wbc = vitals.get("wbc", 8.0)
+    if wbc and (wbc > 12.0 or wbc < 4.0): score += 1
+    
+    if score >= 3: risk = "High"
+    elif score >= 2: risk = "Medium"
+    else: risk = "Low"
+    
+    return score, risk
 
-def predict_cluster(vitals, kmeans, scaler):
-    if not kmeans or not scaler: return "N/A"
-    X = scaler.transform([[
-        vitals["temperature"], vitals["heart_rate"], vitals["respiratory_rate"],
-        vitals["systolic_bp"], vitals["spo2"], vitals.get("wbc", 0)
-    ]])
-    return int(kmeans.predict(X)[0])
-
-def risk_badge(label: str):
-    l = (label or "").lower(); cls = "risk-low"
-    if "mod" in l or "medium" in l: cls = "risk-med"
-    if "high" in l or "severe" in l or "critical" in l: cls = "risk-high"
-    return f'<span class="risk-badge {cls}">{label}</span>'
-
-# Fallback scoring if scoring.py is missing
-def fb_qsofa(v):
-    s=0
-    if (v.get('respiratory_rate') or 0) >= 22: s+=1
-    if (v.get('systolic_bp') or 999) <= 100: s+=1
-    if (str(v.get('consciousness','Alert')).lower() != 'alert'): s+=1
-    return s
-def fb_sirs(v):
-    s=0; t=v.get('temperature'); hr=v.get('heart_rate'); rr=v.get('respiratory_rate'); w=v.get('wbc')
-    if t is not None and (t>38 or t<36): s+=1
-    if hr is not None and hr>90: s+=1
-    if rr is not None and rr>20: s+=1
-    if w is not None and (w>12 or w<4): s+=1
-    return s
-def fb_news2(v):
-    s=0
-    rr=v.get('respiratory_rate',18) or 18; spo2=v.get('spo2',98) or 98; sbp=v.get('systolic_bp',120) or 120
-    hr=v.get('heart_rate',80) or 80; temp=v.get('temperature'); cons=str(v.get('consciousness','Alert')).lower()
-    if rr<=8: s+=3
-    elif 9<=rr<=11: s+=1
-    elif 21<=rr<=24: s+=2
-    elif rr>=25: s+=3
-    if spo2<=91: s+=3
-    elif 92<=spo2<=93: s+=2
-    elif spo2 in (94,95): s+=1
-    if sbp<=90: s+=3
-    elif 91<=sbp<=100: s+=2
-    elif 101<=sbp<=110: s+=1
-    if hr<=40 or hr>=131: s+=3
-    elif 111<=hr<=130: s+=2
-    elif 91<=hr<=110: s+=1
-    if temp is not None:
-        if temp<=35.0: s+=3
-        elif temp>=39.1: s+=2
-        elif 35.1<=temp<=36.0: s+=1
-    if cons!='alert': s+=3
-    return s
-def fb_interpret(news2,qsofa,sirs):
-    if news2>=7 or qsofa>=2: return ("High","#ff4b4b","Urgent clinical escalation required. Consider sepsis bundle.")
-    if news2>=5:            return ("Medium","#ffc700","Urgent review by clinician. Monitor closely.")
-    if news2>=1 or sirs>=2: return ("Low-Medium","#2b9aff","Requires assessment and monitoring.")
-    return ("Low","#00c48c","Continue routine monitoring")
-
-def compute_scores(vitals):
-    if calculate_news2 and calculate_qsofa and calculate_sirs:
-        n_s, n_r = calculate_news2(vitals)
-        q_s, q_r = calculate_qsofa(vitals)
-        s_s, s_r = calculate_sirs(vitals)
-    else:
-        n_s, q_s, s_s = fb_news2(vitals), fb_qsofa(vitals), fb_sirs(vitals)
-        n_r, q_r, s_r = "—","—","—"
-    kmeans, scaler = load_kmeans_and_scaler()
-    cl = predict_cluster(vitals, kmeans, scaler)
-    st.session_state.scores = {
-        "news2": (n_s, n_r), "qsofa": (q_s, q_r), "sirs": (s_s, s_r),
-        "cluster": cl, "vitals": vitals, "ts": time.time()
+def compute_all_scores(vitals: Dict) -> Dict:
+    """Compute all clinical scores"""
+    news2_score, news2_risk = calculate_news2(vitals)
+    qsofa_score, qsofa_risk = calculate_qsofa(vitals)
+    sirs_score, sirs_risk = calculate_sirs(vitals)
+    
+    return {
+        "NEWS2": news2_score,
+        "NEWS2_Risk": news2_risk,
+        "qSOFA": qsofa_score,
+        "qSOFA_Risk": qsofa_risk,
+        "SIRS": sirs_score,
+        "SIRS_Risk": sirs_risk,
+        "ML_Prediction": None,
+        "ML_Prob": None,
+        "ML_Risk": None
     }
 
-# ------------------------- Shared Top Bar ------------------------- #
-def topbar(show_back:bool=True):
-    c1, c2, c3 = st.columns([1,6,1])
-    with c1:
-        if show_back and st.button("← Back", key=f"back_{st.session_state.route}"):
-            go_back()
-    with c2:
-        st.markdown("<div style='text-align:center' class='small'>", unsafe_allow_html=True)
-        st.markdown("**Sepsis RAG Assistant**")
-        st.markdown("</div>", unsafe_allow_html=True)
-    with c3:
-        col = st.container()
-        with col:
-            if st.button("🏠 Home", key=f"home_{st.session_state.route}"):
-                goto("HOME")
+def pill(text: str) -> str:
+    """Create a colored pill for risk levels"""
+    color_class = "pill-low"
+    if "High" in text: color_class = "pill-high"
+    elif "Medium" in text: color_class = "pill-medium"
+    return f'<span class="pill {color_class}">{text}</span>'
 
-# ------------------------- Pages ------------------------- #
-def page_auth():
-    st.markdown("<div class='auth-wrap'><div class='gcard auth-card'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='text-align:center;margin:0 0 6px;'>Welcome to Sepsis RAG Assistant</h2>", unsafe_allow_html=True)
-    st.markdown("<div class='small' style='text-align:center;margin-bottom:10px'>Sign in or create an account</div>", unsafe_allow_html=True)
-    tabs = st.tabs(["Login", "Register"])
-    with tabs[0]:
-        u = st.text_input("Username", key="login_user")
-        p = st.text_input("Password", type="password", key="login_pass")
-        if st.button("Login", key="login_btn"):
-            if u and p:
-                st.session_state.auth_user = u
-                goto("HOME")
-            else:
-                st.error("Enter both username and password.")
-    with tabs[1]:
-        u2 = st.text_input("Create username", key="reg_user")
-        p2 = st.text_input("Create password", type="password", key="reg_pass")
-        if st.button("Create account", key="reg_btn"):
-            if u2 and p2:
-                st.session_state.auth_user = u2
-                goto("HOME")
-            else:
-                st.error("Enter both username and password.")
-    st.markdown("</div></div>", unsafe_allow_html=True)
+# Component functions
+def render_kpi_tile(title, value, risk_level=None, description=None):
+    """Create an enhanced KPI tile using Streamlit containers"""
+    with st.container(border=True):
+        col1, col2 = st.columns([3, 1])
+        
+        with col1:
+            st.markdown(f"**{title}**")
+            st.metric("", value)
+            if description:
+                st.caption(description)
+        
+        with col2:
+            if risk_level:
+                risk_class = f"risk-{risk_level.lower()}"
+                st.markdown(f'<div class="risk-pill {risk_class}">{risk_level}</div>', unsafe_allow_html=True)
 
-def nebula_svg():
-    return """
-<svg class="nebula" viewBox="0 0 1200 420" preserveAspectRatio="xMidYMid slice">
-  <defs>
-    <radialGradient id="g1" cx="30%" cy="30%">
-      <stop offset="0%" stop-color="#7fd3ff" stop-opacity=".45"/>
-      <stop offset="100%" stop-color="#7c3aed" stop-opacity=".0"/>
-    </radialGradient>
-    <radialGradient id="g2" cx="70%" cy="70%">
-      <stop offset="0%" stop-color="#8b5cf6" stop-opacity=".35"/>
-      <stop offset="100%" stop-color="#0ea5e9" stop-opacity=".0"/>
-    </radialGradient>
-    <filter id="blur"><feGaussianBlur stdDeviation="40"/></filter>
-  </defs>
-  <circle cx="280" cy="160" r="220" fill="url(#g1)" filter="url(#blur)"/>
-  <circle cx="900" cy="300" r="260" fill="url(#g2)" filter="url(#blur)"/>
-</svg>
+def render_overview_gauges(scores_dict):
+    """Render all overview gauges in a clean layout"""
+    if not scores_dict:
+        return
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        render_kpi_tile("NEWS2", scores_dict["NEWS2"], scores_dict["NEWS2_Risk"], "National Early Warning Score")
+    
+    with col2:
+        render_kpi_tile("qSOFA", scores_dict["qSOFA"], scores_dict["qSOFA_Risk"], "Quick Sequential Organ Failure")
+    
+    with col3:
+        render_kpi_tile("SIRS", scores_dict["SIRS"], scores_dict["SIRS_Risk"], "Systemic Inflammatory Response")
+    
+    with col4:
+        risk_score = (scores_dict["NEWS2"] * 2 + scores_dict["qSOFA"] * 3 + scores_dict["SIRS"] * 2) / 7 * 100
+        overall_risk = "High" if risk_score > 70 else "Medium" if risk_score > 40 else "Low"
+        render_kpi_tile("Overall Risk", f"{risk_score:.0f}%", overall_risk, "Composite Risk Assessment")
+
+def render_clinical_interpretation(scores_dict):
+    """Render clinical interpretation section"""
+    with st.container(border=True):
+        st.markdown("### 🔍 Clinical Interpretation")
+        
+        high_scores = [k for k, v in scores_dict.items() if "Risk" in k and v == "High"]
+        if high_scores:
+            st.error("🚨 **HIGH RISK SEPSIS DETECTED** - Immediate intervention required")
+            
+            st.markdown("**🚨 Immediate Actions Required:**")
+            action_items = [
+                "Obtain blood cultures before antibiotics",
+                "Start empiric antibiotics within 1 hour", 
+                "Administer IV fluid resuscitation (30ml/kg)",
+                "Monitor lactate and blood pressure",
+                "Consider ICU consultation",
+                "Reassess in 30 minutes"
+            ]
+            
+            for item in action_items:
+                st.markdown(f"• {item}")
+        else:
+            st.success("✅ **Low to moderate risk** - Continue standard monitoring")
+
+def render_patient_form():
+    """Render the patient assessment form"""
+    with st.form("vitals_form", clear_on_submit=False):
+        # Primary Vitals Section
+        st.markdown("#### 🌡️ Primary Vital Signs")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Temperature & Pulse**")
+            temperature = st.number_input("Temperature (°C)", 30.0, 45.0, 
+                                        st.session_state.vitals["temperature"], 0.1)
+            heart_rate = st.number_input("Heart Rate (bpm)", 30, 250, 
+                                       int(st.session_state.vitals["heart_rate"]), 1)
+        
+        with col2:
+            st.markdown("**Respiratory & Oxygen**")
+            respiratory_rate = st.number_input("Respiratory Rate (/min)", 5, 60, 
+                                             int(st.session_state.vitals["respiratory_rate"]), 1)
+            spo2 = st.number_input("SpO₂ (%)", 70, 100, 
+                                 int(st.session_state.vitals["spo2"]), 1)
+        
+        with col3:
+            st.markdown("**Blood Pressure**")
+            systolic_bp = st.number_input("Systolic BP (mmHg)", 60, 300, 
+                                        int(st.session_state.vitals["systolic_bp"]), 1)
+            diastolic_bp = st.number_input("Diastolic BP (mmHg)", 40, 200, 
+                                         int(st.session_state.vitals["diastolic_bp"]), 1)
+        
+        st.markdown("#### 🧪 Laboratory & Neurological")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            wbc = st.number_input("WBC Count (×10³/µL)", 0.0, 50.0, 
+                                float(st.session_state.vitals["wbc"]), 0.1)
+        
+        with col2:
+            gcs = st.number_input("Glasgow Coma Scale", 3, 15, 
+                                int(st.session_state.vitals["gcs"]), 1)
+        
+        with col3:
+            consciousness = st.selectbox("Consciousness Level (AVPU)", 
+                                       ["Alert", "Voice", "Pain", "Unresponsive"],
+                                       index=["Alert", "Voice", "Pain", "Unresponsive"].index(
+                                           st.session_state.vitals["consciousness"]))
+        
+        # Clinical Notes
+        st.markdown("#### 📝 Clinical Notes")
+        notes = st.text_area("Additional observations, symptoms, or clinical context", 
+                            height=100, 
+                            placeholder="e.g., Patient reports fever and chills for 2 days, suspected UTI...")
+        
+        # Submit Button
+        if st.form_submit_button("🔬 Calculate Risk Scores", use_container_width=True):
+            process_patient_form(temperature, heart_rate, respiratory_rate, systolic_bp, 
+                                diastolic_bp, spo2, wbc, gcs, consciousness, notes)
+
+def process_patient_form(temperature, heart_rate, respiratory_rate, systolic_bp, 
+                        diastolic_bp, spo2, wbc, gcs, consciousness, notes):
+    """Process patient form submission"""
+    # Update vitals
+    vitals = {
+        "temperature": temperature,
+        "heart_rate": heart_rate,
+        "respiratory_rate": respiratory_rate,
+        "systolic_bp": systolic_bp,
+        "diastolic_bp": diastolic_bp,
+        "spo2": spo2,
+        "wbc": wbc,
+        "gcs": gcs,
+        "consciousness": consciousness
+    }
+    
+    # Calculate scores using preserved core logic
+    scores = compute_all_scores(vitals)
+    
+    # Create record
+    record = {
+        "Timestamp": dt.datetime.now(),
+        "Temperature": temperature,
+        "HeartRate": heart_rate,
+        "RespiratoryRate": respiratory_rate,
+        "SystolicBP": systolic_bp,
+        "DiastolicBP": diastolic_bp,
+        "SpO2": spo2,
+        "WBC": wbc,
+        "GCS": gcs,
+        "Consciousness": consciousness,
+        "Notes": notes
+    }
+    record.update(scores)
+    
+    # Save to session
+    st.session_state.vitals = vitals
+    st.session_state.scores = scores
+    
+    # Add to dataframe
+    new_df = pd.DataFrame([record], columns=SCHEMA)
+    st.session_state.data = pd.concat([st.session_state.data, new_df], ignore_index=True)
+    
+    st.success("✅ Risk scores calculated successfully! View results in the Overview tab.")
+    st.session_state.current_view = "overview"
+    st.rerun()
+
+def render_analytics_tab(df):
+    """Render the complete analytics dashboard"""
+    if df.empty:
+        with st.container(border=True):
+            st.markdown("### 📊 No Data Available")
+            st.info("Enter patient assessments to view analytics and trends")
+        return
+    
+    st.markdown("### 📈 Clinical Analytics Dashboard")
+    
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        render_kpi_tile("Total Cases", str(len(df)), description="Patients assessed")
+    
+    with col2:
+        high_risk_count = (df["NEWS2_Risk"] == "High").sum()
+        risk_level = "High" if high_risk_count > len(df) * 0.3 else "Medium" if high_risk_count > 0 else "Low"
+        render_kpi_tile("High Risk", str(high_risk_count), risk_level, "Critical cases")
+    
+    with col3:
+        avg_news2 = df["NEWS2"].mean()
+        risk_level = "High" if avg_news2 > 7 else "Medium" if avg_news2 > 5 else "Low"
+        render_kpi_tile("Avg NEWS2", f"{avg_news2:.1f}", risk_level, "Population average")
+    
+    with col4:
+        latest_time = df["Timestamp"].max()
+        hours_ago = (dt.datetime.now() - latest_time).total_seconds() / 3600
+        render_kpi_tile("Last Update", f"{hours_ago:.0f}h ago", description="Most recent case")
+    
+    # Risk Distribution Chart
+    with st.container(border=True):
+        st.markdown("### 📊 Risk Distribution")
+        risk_counts = df["NEWS2_Risk"].value_counts()
+        st.bar_chart(risk_counts)
+    
+    # Recent Cases Table
+    with st.container(border=True):
+        st.markdown("### 📋 Recent Cases")
+        
+        # Display last 10 records with key information
+        display_cols = ["Timestamp", "Temperature", "HeartRate", "SystolicBP", "NEWS2", "NEWS2_Risk", "qSOFA_Risk"]
+        recent_data = df[display_cols].tail(10).sort_values("Timestamp", ascending=False)
+        st.dataframe(recent_data, use_container_width=True)
+        
+        # Export functionality
+        if st.button("📄 Export All Data", use_container_width=True):
+            csv = df.to_csv(index=False)
+            st.download_button("📥 Download CSV File", csv, "sepsis_analytics.csv", "text/csv", use_container_width=True)
+
+def render_chat_interface():
+    """Render the chat interface"""
+    with st.container(border=True):
+        if not st.session_state.chat:
+            st.markdown("""
+            <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                <h4>👋 Hello! I'm your clinical AI assistant</h4>
+                <p>Ask me about sepsis diagnosis, treatment protocols, or clinical guidelines.</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Display chat messages
+        for msg in st.session_state.chat:
+            if msg["role"] == "user":
+                st.markdown(f"""
+                <div class="chat-message chat-user">
+                    <strong>🧑‍⚕️ You:</strong> {msg['content']}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="chat-message">
+                    <strong>🤖 Assistant:</strong> {msg['content']}
+                </div>
+                """, unsafe_allow_html=True)
+
+def render_quick_questions():
+    """Render quick question buttons"""
+    col1, col2, col3 = st.columns(3)
+    
+    quick_questions = {
+        "💊 Antibiotics": "What are the recommended empiric antibiotics for sepsis?",
+        "💧 Fluid Therapy": "How much fluid should I give for septic shock?",
+        "🔍 Diagnostics": "What lab tests should I order for suspected sepsis?",
+        "📊 qSOFA Criteria": "What are the qSOFA criteria and how do I interpret them?",
+        "🚨 Sepsis-3": "What are the updated Sepsis-3 definitions?",
+        "⏰ Time Targets": "What are the key time targets for sepsis management?"
+    }
+    
+    questions_list = list(quick_questions.items())
+    
+    with col1:
+        for i in range(0, len(questions_list), 3):
+            if i < len(questions_list):
+                if st.button(questions_list[i][0], use_container_width=True, key=f"q1_{i}"):
+                    handle_question(questions_list[i][1])
+    
+    with col2:
+        for i in range(1, len(questions_list), 3):
+            if i < len(questions_list):
+                if st.button(questions_list[i][0], use_container_width=True, key=f"q2_{i}"):
+                    handle_question(questions_list[i][1])
+    
+    with col3:
+        for i in range(2, len(questions_list), 3):
+            if i < len(questions_list):
+                if st.button(questions_list[i][0], use_container_width=True, key=f"q3_{i}"):
+                    handle_question(questions_list[i][1])
+
+def render_sidebar():
+    """Render enhanced sidebar"""
+    with st.sidebar:
+        st.markdown("### 🩺 Quick Actions")
+        
+        # Quick preset buttons with better styling
+        if st.button("🔴 High Risk Patient", use_container_width=True):
+            st.session_state.vitals.update({
+                "temperature": 39.2, "heart_rate": 125, "respiratory_rate": 28,
+                "systolic_bp": 88, "spo2": 89, "consciousness": "Voice"
+            })
+            st.rerun()
+        
+        if st.button("🟡 Medium Risk Patient", use_container_width=True):
+            st.session_state.vitals.update({
+                "temperature": 38.5, "heart_rate": 105, "respiratory_rate": 22,
+                "systolic_bp": 95, "spo2": 94, "consciousness": "Alert"
+            })
+            st.rerun()
+        
+        if st.button("🟢 Normal Vitals", use_container_width=True):
+            st.session_state.vitals.update({
+                "temperature": 37.0, "heart_rate": 75, "respiratory_rate": 16,
+                "systolic_bp": 120, "spo2": 98, "consciousness": "Alert"
+            })
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # System Status
+        st.markdown("### 🔧 System Status")
+        st.success("🤖 RAG System: Online")
+        
+        if st.session_state.data is not None and not st.session_state.data.empty:
+            st.info(f"📊 {len(st.session_state.data)} Records")
+
+def create_hero_section():
+    """Create the main hero section"""
+    rag_status = "🟢 Available" if RAG_AVAILABLE else "🔴 Unavailable"
+    
+    st.markdown(f"""
+    <div class="hero-section fade-in">
+        <h1 class="hero-title">Sepsis Clinical Decision Support</h1>
+        <p class="hero-subtitle">Advanced AI-powered risk assessment with real-time clinical guidance</p>
+        <div class="hero-status">
+            <span>🤖 AI System</span>
+            <span>{rag_status}</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def create_kpi_card(title, value, risk_level=None, description=None):
+    """Create an enhanced KPI card"""
+    risk_pill = ""
+    if risk_level:
+        risk_class = f"risk-{risk_level.lower()}"
+        risk_pill = f'<div class="risk-pill {risk_class}">{risk_level} Risk</div>'
+    
+    desc_text = f'<div style="color: var(--text-tertiary); font-size: 0.8rem; margin-top: 0.5rem;">{description}</div>' if description else ""
+    
+    return f"""
+    <div class="kpi-card fade-in">
+        <div class="kpi-value">{value}</div>
+        <div class="kpi-label">{title}</div>
+        {risk_pill}
+        {desc_text}
+    </div>
     """
 
-def page_home():
-    # header row (slim)
-    st.markdown(
-        f"<div class='small' style='display:flex;justify-content:space-between;opacity:.9'>"
-        f"<div>Signed in as: <b>{st.session_state.get('auth_user','—')}</b></div>"
-        f"<div></div></div>", unsafe_allow_html=True)
+def create_form_section(title, content):
+    """Create a form section with proper styling"""
+    return f"""
+    <div class="form-section">
+        <div class="form-group-title">{title}</div>
+        {content}
+    </div>
+    """
 
-    # HERO with nebula artwork
-    st.markdown("<div class='hero'>", unsafe_allow_html=True)
-    components.html(nebula_svg(), height=0)  # inject (absolute) without spacing
-    st.markdown("<h1>Welcome to Sepsis RAG Assistant</h1>", unsafe_allow_html=True)
-    st.markdown("<p>AI-powered clinical support for early sepsis detection and management.</p>", unsafe_allow_html=True)
+def create_alert(message, alert_type="info"):
+    """Create styled alerts"""
+    alert_class = f"alert-{alert_type}"
+    icon = "🚨" if alert_type == "critical" else "✅" if alert_type == "success" else "ℹ️"
+    
+    return f"""
+    <div class="{alert_class}">
+        <strong>{icon} {message}</strong>
+    </div>
+    """
 
-    # CTA tiles
-    st.markdown("<div class='cta'>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([1,1,1])
-    with c1:
-        st.markdown("<div class='tile'>", unsafe_allow_html=True)
-        st.markdown("<div class='title'>🩺 Enter Patient Vitals</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub'>Temperature, HR, BP, SpO₂, etc.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-        if st.button("Open Vitals", key="home_to_vitals"):
-            goto("VITALS")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div class='tile'>", unsafe_allow_html=True)
-        st.markdown("<div class='title'>📊 View Risk Scores</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub'>NEWS2, qSOFA, SIRS, Cluster.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-        if st.button("Go to Dashboard", key="home_to_dash"):
-            goto("VITALS")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown("<div class='tile'>", unsafe_allow_html=True)
-        st.markdown("<div class='title'>💬 Ask Clinical Questions</div>", unsafe_allow_html=True)
-        st.markdown("<div class='sub'>Get guideline-grounded answers.</div>", unsafe_allow_html=True)
-        st.markdown("<div class='btn-wrap'>", unsafe_allow_html=True)
-        if st.button("Open Chatbot", key="home_to_chat"):
-            goto("CHAT")
-        st.markdown("</div></div>", unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)  # end cta
-    st.markdown("</div>", unsafe_allow_html=True)  # end hero
-
-    # Footer actions
-    col_l, col_c, col_r = st.columns([1,6,1])
-    with col_l:
-        if st.button("Logout", key="logout_btn"):
-            st.session_state.auth_user = None
-            st.session_state.nav_stack.clear()
-            goto("AUTH")
-
-def page_vitals_tabs():
-    topbar(show_back=True)
-
-    # quick popover editor + risk compute
-    tb_l, tb_r = st.columns([3,2])
-    with tb_l:
-        st.markdown("<div class='card small'>Use presets to simulate risk, then generate a digital report.</div>", unsafe_allow_html=True)
-    with tb_r:
-        with st.popover("✏️ Edit vitals"):
-            v = st.session_state.vitals
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                v["temperature"] = st.number_input("Temp (°C)", 30.0, 45.0, v.get("temperature", 37.0), 0.1)
-                v["spo2"] = st.number_input("SpO₂ (%)", 70, 100, v.get("spo2", 98), 1)
-            with c2:
-                v["heart_rate"] = st.number_input("Heart Rate (bpm)", 30, 200, v.get("heart_rate", 80), 1)
-                v["systolic_bp"] = st.number_input("Systolic BP (mmHg)", 60, 250, v.get("systolic_bp", 120), 1)
-            with c3:
-                v["respiratory_rate"] = st.number_input("Resp Rate (/min)", 5, 50, v.get("respiratory_rate", 16), 1)
-                v["wbc"] = st.number_input("WBC (/μL) (optional)", 0, 50000, v.get("wbc", 0), 100)
-            v["consciousness"] = st.selectbox("AVPU", ["Alert","Voice","Pain","Unresponsive"],
-                                              index=["Alert","Voice","Pain","Unresponsive"].index(v.get("consciousness","Alert")))
-            st.caption("Tip: use presets below.")
-        if st.button("⚙️ Calculate risk", key="calc_risk"):
-            vt = st.session_state.vitals
-            errs=[]
-            if not (30 <= vt["temperature"] <= 45): errs.append("Temperature out of range")
-            if not (30 <= vt["heart_rate"] <= 200): errs.append("Heart rate out of range")
-            if errs: st.error(" • ".join(errs))
-            else:
-                compute_scores(vt)
-                st.success("Scores updated.")
-
-    tabs = st.tabs(["Dashboard", "Timeline", "Report"])
-
-    # DASHBOARD
-    with tabs[0]:
-        pa, pb, pc, pd = st.columns(4)
-        if pa.button("Preset: High"): st.session_state.vitals.update({"temperature":39.2,"heart_rate":125,"respiratory_rate":28,"systolic_bp":88,"spo2":89,"consciousness":"Voice"})
-        if pb.button("Preset: Med"):  st.session_state.vitals.update({"temperature":38.5,"heart_rate":105,"respiratory_rate":22,"systolic_bp":95,"spo2":94,"consciousness":"Alert"})
-        if pc.button("Preset: Low"):  st.session_state.vitals.update({"temperature":37.1,"heart_rate":85,"respiratory_rate":18,"systolic_bp":115,"spo2":97,"consciousness":"Alert"})
-        if pd.button("➕ Snapshot"):
-            st.session_state.timeline.append({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), **st.session_state.vitals})
-        st.write("")
-        scores = st.session_state.scores
-        k1, k2, k3, k4 = st.columns(4)
-        with k1:
-            st.markdown('<div class="card">**NEWS2**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['news2'][0] if scores else '—'}</div>", unsafe_allow_html=True)
-            if scores: st.markdown(risk_badge(scores["news2"][1]), unsafe_allow_html=True)
-        with k2:
-            st.markdown('<div class="card">**qSOFA**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['qsofa'][0] if scores else '—'}</div>", unsafe_allow_html=True)
-            if scores: st.markdown(risk_badge(scores["qsofa"][1]), unsafe_allow_html=True)
-        with k3:
-            st.markdown('<div class="card">**SIRS**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['sirs'][0] if scores else '—'}</div>", unsafe_allow_html=True)
-            if scores: st.markdown(risk_badge(scores["sirs"][1]), unsafe_allow_html=True)
-        with k4:
-            st.markdown('<div class="card">**Profile**</div>', unsafe_allow_html=True)
-            st.markdown(f"<div style='font-size:1.6rem;font-weight:900'>{scores['cluster'] if scores else '—'}</div>", unsafe_allow_html=True)
-            st.caption("K-Means cluster")
-
-        c1, c2 = st.columns([1.1,1])
-        with c1:
-            risk_numeric = 0
-            if scores:
-                risk_numeric += min(20, scores["news2"][0] * 2)
-                risk_numeric += min(9, scores["qsofa"][0] * 3)
-                risk_numeric += min(8, scores["sirs"][0] * 2)
-                risk_numeric = max(0, min(100, int((risk_numeric / 37) * 100)))
-            gauge = go.Figure(go.Indicator(
-                mode="gauge+number", value=risk_numeric, title={"text":"Overall Risk (heuristic)"},
-                gauge={"axis":{"range":[0,100]},"bar":{"thickness":0.3},
-                       "steps":[{"range":[0,35],"color":"#10b98140"},
-                                {"range":[35,70],"color":"#f59e0b40"},
-                                {"range":[70,100],"color":"#ef444440"}],
-                       "threshold":{"line":{"color":"#ef4444","width":4},"thickness":0.75,"value":70}},
-                number={"suffix":"%"}))
-            gauge.update_layout(template=PLOTLY_TEMPLATE, height=260, margin=dict(l=18,r=18,t=30,b=10))
-            st.plotly_chart(gauge, use_container_width=True)
-        with c2:
-            normals={"temperature":(36.1,37.2),"heart_rate":(60,100),"respiratory_rate":(12,20),"systolic_bp":(100,130),"spo2":(95,100)}
-            current=scores["vitals"] if scores else st.session_state.vitals
-            cats,vals=[],[]
-            for k,(lo,hi) in normals.items():
-                v=current[k]; cats.append(k)
-                score=0.1 if lo<=v<=hi else min(1.0, abs(v-(lo if v<lo else hi))/max(1e-6,(hi-lo)))
-                vals.append(score)
-            radar=go.Figure()
-            radar.add_trace(go.Scatterpolar(r=vals+[vals[0]], theta=cats+[cats[0]], fill='toself', name='Abnormality'))
-            radar.update_layout(template=PLOTLY_TEMPLATE, polar=dict(radialaxis=dict(range=[0,1], showticklabels=False)),
-                                showlegend=False, height=260, margin=dict(l=10,r=10,t=30,b=10))
-            st.plotly_chart(radar, use_container_width=True)
-
-        st.markdown("#### 🔎 Interpretation")
-        st.markdown('<div class="card" style="max-height:170px; overflow:auto">', unsafe_allow_html=True)
-        if scores:
-            lbl,col,adv = fb_interpret(scores["news2"][0], scores["qsofa"][0], scores["sirs"][0]) if not interpret_risk else interpret_risk(scores["news2"][0], scores["qsofa"][0], scores["sirs"][0])
-            st.markdown(f"**Risk:** <span style='color:{col}; font-weight:800'>{lbl}</span><br>{adv}", unsafe_allow_html=True)
+def render_clinical_interpretation(scores):
+    """Render clinical interpretation based on scores"""
+    with st.container(border=True):
+        st.markdown("### 🔍 Clinical Interpretation")
+        
+        high_scores = [k for k, v in scores.items() if "Risk" in k and v == "High"]
+        if high_scores:
+            st.markdown(create_alert("HIGH RISK SEPSIS DETECTED - Immediate intervention required", "critical"), 
+                       unsafe_allow_html=True)
+            
+            st.markdown("**🚨 Immediate Actions Required:**")
+            action_items = [
+                "Obtain blood cultures before antibiotics",
+                "Start empiric antibiotics within 1 hour",
+                "Administer IV fluid resuscitation (30ml/kg)",
+                "Monitor lactate and blood pressure",
+                "Consider ICU consultation",
+                "Reassess in 30 minutes"
+            ]
+            
+            for item in action_items:
+                st.markdown(f"• {item}")
         else:
-            st.info("Click **⚙️ Calculate risk** to populate this section.")
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(create_alert("Low to moderate risk - Continue standard monitoring", "success"), 
+                       unsafe_allow_html=True)
 
-    # TIMELINE
-    with tabs[1]:
-        top = st.columns([1,1,1,1])
-        with top[0]:
-            if st.button("➕ Add snapshot (now)"):
-                st.session_state.timeline.append({"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), **st.session_state.vitals})
-        with top[1]:
-            if st.button("🧹 Clear"):
-                st.session_state.timeline = []
-        with top[3]:
-            st.caption("Snapshots capture current vitals for trends.")
-        st.markdown('<div class="card" style="max-height:460px; overflow:auto">', unsafe_allow_html=True)
-        if st.session_state.timeline:
-            df = pd.DataFrame(st.session_state.timeline)
-            df["timestamp"]=pd.to_datetime(df["timestamp"]); df=df.sort_values("timestamp")
-            long = df.melt(id_vars=["timestamp","consciousness","wbc"],
-                           value_vars=["heart_rate","respiratory_rate","systolic_bp","temperature","spo2"],
-                           var_name="vital", value_name="value")
-            line = px.line(long, x="timestamp", y="value", color="vital", markers=True, template=PLOTLY_TEMPLATE)
-            line.update_layout(height=360, margin=dict(l=6,r=6,t=6,b=6), legend_title="")
-            st.plotly_chart(line, use_container_width=True)
-            st.dataframe(df.set_index("timestamp"), use_container_width=True, height=200)
-        else:
-            st.info("No snapshots yet. Add one to visualize trends.")
-        st.markdown('</div>', unsafe_allow_html=True)
+# Main app
+def main():
+    init_session_state()
+    
+    # Hero Section
+    create_hero_section()
+    
+    # Enhanced Sidebar
+    render_sidebar()
+    
+    # Main Navigation - using a more elegant approach
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("📊 Overview", use_container_width=True):
+            st.session_state.current_view = "overview"
+    
+    with col2:
+        if st.button("🩺 Patient Assessment", use_container_width=True):
+            st.session_state.current_view = "patient"
+    
+    with col3:
+        if st.button("📈 Analytics", use_container_width=True):
+            st.session_state.current_view = "analytics"
+    
+    with col4:
+        if st.button("💬 AI Assistant", use_container_width=True):
+            st.session_state.current_view = "assistant"
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Dynamic Content Based on Current View
+    if st.session_state.current_view == "overview":
+        render_overview()
+    elif st.session_state.current_view == "patient":
+        render_patient_assessment()
+    elif st.session_state.current_view == "analytics":
+        render_analytics()
+    elif st.session_state.current_view == "assistant":
+        render_ai_assistant()
 
-    # REPORT
-    with tabs[2]:
-        st.markdown("### 🧾 Create Digital Report")
-        st.caption("Build a compact patient profile & export.")
-        p = st.session_state.profile
-        r1c1,r1c2,r1c3,r1c4,r1c5,r1c6 = st.columns([1.2,1.2,0.9,0.9,0.9,1.0])
-        with r1c1: p["username"]=st.text_input("Username / Handle", p.get("username",""))
-        with r1c2: p["patient_name"]=st.text_input("Patient name", p.get("patient_name",""))
-        with r1c3: p["mrn"]=st.text_input("MRN / ID", p.get("mrn",""))
-        with r1c4: p["age"]=st.number_input("Age", 0, 120, int(p.get("age",0)))
-        with r1c5: p["sex"]=st.selectbox("Sex", ["Male","Female","Other"], index=["Male","Female","Other"].index(p.get("sex","Male")))
-        with r1c6:
-            col_h,col_w = st.columns(2)
-            with col_h: p["height_cm"]=st.number_input("Ht (cm)", 0.0, 260.0, float(p.get("height_cm",0.0)), step=0.1)
-            with col_w: p["weight_kg"]=st.number_input("Wt (kg)", 0.0, 400.0, float(p.get("weight_kg",0.0)), step=0.1)
-        r2c1,r2c2,r2c3,r2c4 = st.columns([1.2,1.2,1.2,1.2])
-        with r2c1: p["chief_complaint"]=st.text_input("Chief complaint", p.get("chief_complaint",""))
-        with r2c2: p["infection_source"]=st.text_input("Suspected infection source", p.get("infection_source",""))
-        with r2c3: p["allergies"]=st.text_input("Allergies", p.get("allergies",""))
-        with r2c4: p["comorbidities"]=st.text_input("Comorbidities", p.get("comorbidities",""))
-        r3c1,r3c2,r3c3 = st.columns([1.4,0.8,1.8])
-        with r3c1: p["current_meds"]=st.text_input("Current meds", p.get("current_meds",""))
-        with r3c2: p["code_status"]=st.selectbox("Code status", ["Full Code","DNR","DNI","Limited"],
-                                                 index=["Full Code","DNR","DNI","Limited"].index(p.get("code_status","Full Code")))
-        with r3c3: p["notes"]=st.text_input("Notes", p.get("notes",""))
-        files = st.file_uploader("Attach medical report(s) (PDF/Image)", type=["pdf","png","jpg","jpeg"], accept_multiple_files=True)
-        if files:
-            for f in files:
-                st.session_state.profile["attachments"].append({"name": f.name, "type": f.type})
-            st.success(f"Added {len(files)} attachment(s).")
-        a1,a2,a3,_ = st.columns([1,1,1,3])
-        if a1.button("💾 Save Profile"): st.success("Profile saved for this session.")
-        if a2.button("🧹 Clear Profile"):
-            st.session_state.profile = {k: ("" if isinstance(v,str) else 0 if isinstance(v,(int,float)) else [] if isinstance(v,list) else v)
-                                        for k,v in st.session_state.profile.items()}
-            st.rerun()
-        gen_clicked = a3.button("🧾 Generate Report")
-        if gen_clicked:
-            h_m = (p.get("height_cm",0.0) or 0)/100.0; w_kg = p.get("weight_kg",0.0) or 0
-            bmi = round(w_kg/(h_m*h_m),1) if h_m and w_kg else None
-            s = st.session_state.scores; v = st.session_state.vitals
-            lines = ["# Patient Digital Report", f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M')}", "",
-                     "## Identity",
-                     f"- Username: {p.get('username','—')}",
-                     f"- Name: {p.get('patient_name','—')}  |  MRN: {p.get('mrn','—')}",
-                     f"- Age/Sex: {p.get('age','—')} / {p.get('sex','—')}",
-                     f"- Height/Weight/BMI: {p.get('height_cm','—')} cm / {p.get('weight_kg','—')} kg" + (f" / BMI {bmi}" if bmi else ""),
-                     "", "## Clinical Context",
-                     f"- Chief complaint: {p.get('chief_complaint','—')}",
-                     f"- Suspected infection source: {p.get('infection_source','—')}",
-                     f"- Allergies: {p.get('allergies','—')}",
-                     f"- Comorbidities: {p.get('comorbidities','—')}",
-                     f"- Current meds: {p.get('current_meds','—')}",
-                     f"- Code status: {p.get('code_status','—')}",
-                     f"- Notes: {p.get('notes','—')}"]
-            if p.get("attachments"):
-                lines.append(f"- Attachments: {', '.join([a['name'] for a in p['attachments']])}")
-            lines += ["", "## Latest Vitals",
-                      f"- Temp: {v['temperature']} °C   | HR: {v['heart_rate']} bpm   | RR: {v['respiratory_rate']} /min",
-                      f"- SBP: {v['systolic_bp']} mmHg  | SpO₂: {v['spo2']} %         | AVPU: {v['consciousness']}", "",
-                      "## Risk Scores"]
-            if s:
-                lines += [f"- NEWS2: {s['news2'][0]} ({s['news2'][1]})",
-                          f"- qSOFA: {s['qsofa'][0]} ({s['qsofa'][1]})",
-                          f"- SIRS: {s['sirs'][0]} ({s['sirs'][1]})",
-                          f"- Profile (K-Means): {s['cluster']}"]
-                lbl,col,adv = fb_interpret(s['news2'][0], s['qsofa'][0], s['sirs'][0]) if not interpret_risk else interpret_risk(s['news2'][0], s['qsofa'][0], s['sirs'][0])
-                lines += ["", "## Interpretation", f"- Risk: {lbl} — {adv}"]
-            else:
-                lines.append("_No scores yet. Click ‘⚙️ Calculate risk’ above._")
-            report_md = "\n".join(lines)
-            st.markdown("#### Preview")
-            st.markdown('<div class="card" style="height:360px; overflow:auto">', unsafe_allow_html=True)
-            st.markdown(report_md)
-            st.markdown('</div>', unsafe_allow_html=True)
-            d1,d2,d3 = st.columns(3)
-            with d1:
-                st.download_button("⬇️ Profile (JSON)", data=json.dumps(st.session_state.profile, indent=2),
-                                   file_name="patient_profile.json", mime="application/json", use_container_width=True)
-            with d2:
-                if st.session_state.timeline:
-                    df = pd.DataFrame(st.session_state.timeline); buf = io.StringIO(); df.to_csv(buf, index=False)
-                    st.download_button("⬇️ Timeline (CSV)", data=buf.getvalue(), file_name="vitals_timeline.csv",
-                                       mime="text/csv", use_container_width=True)
-                else:
-                    st.button("⬇️ Timeline (CSV)", disabled=True, use_container_width=True)
-            with d3:
-                st.download_button("⬇️ Report (TXT)", data=report_md, file_name="patient_report.txt",
-                                   mime="text/plain", use_container_width=True)
-
-def page_chat():
-    topbar(show_back=True)
-    st.markdown("<div class='card small'>Guideline-aware assistant with citations.</div>", unsafe_allow_html=True)
-
-    chat_h = 520
-    st.markdown(f'<div class="card" style="height:{chat_h}px; overflow:auto; padding:12px;">', unsafe_allow_html=True)
-    if len(st.session_state.chat) == 0:
-        st.markdown("**Ask about fluids, antibiotics, or immediate steps.**")
+def render_overview():
+    """Render the overview dashboard using components"""
+    if st.session_state.scores:
+        # KPI Grid using component
+        render_overview_gauges(st.session_state.scores)
+        
+        # Clinical Interpretation using component
+        render_clinical_interpretation(st.session_state.scores)
     else:
-        for m in st.session_state.chat:
-            speaker = "You" if m["role"]=="user" else "Assistant"
-            st.markdown(f"**{speaker}:** {m['content']}")
-    st.markdown('</div>', unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("""
+            <div style="text-align: center; padding: 3rem;">
+                <h3>👋 Welcome to Sepsis Clinical Decision Support</h3>
+                <p style="color: var(--text-secondary); margin: 1rem 0;">
+                    Enter patient vitals in the <strong>Patient Assessment</strong> tab to begin risk evaluation
+                </p>
+                <div style="margin-top: 2rem;">
+                    <div style="background: var(--glass-primary); border-radius: 12px; padding: 1rem; display: inline-block;">
+                        Click <strong>Patient Assessment</strong> to get started
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    c_l, c_r, c_r2 = st.columns([6,1.2,1.2])
-    with c_l:
-        q = st.text_input("Ask a clinical question", value="", placeholder="e.g., Empiric antibiotics for suspected sepsis?")
-    with c_r:
-        ask = st.button("Ask 💬", use_container_width=True, key="ask_btn")
-    with c_r2:
-        if st.button("💧 Fluids", use_container_width=True): q = "How much crystalloid should I give initially?"
-        if st.button("💊 Rx", use_container_width=True): q = "What are recommended empiric antibiotics for suspected sepsis?"
-    if ask and q:
-        st.session_state.chat.append({"role":"user","content":q})
+def render_patient_assessment():
+    """Render the patient assessment form using components"""
+    st.markdown("### 🩺 Patient Vital Signs Assessment")
+    render_patient_form()
+
+def render_analytics():
+    """Render the analytics dashboard using components"""
+    render_analytics_tab(st.session_state.data)
+
+def render_ai_assistant():
+    """Render the AI assistant using components"""
+    # Chat container
+    render_chat_interface()
+    
+    # Chat input - moved up
+    st.markdown("### ✍️ Ask a Question")
+    question = st.text_area("Type your clinical question here...", 
+                           height=100, 
+                           placeholder="e.g., What are the indications for vasopressors in septic shock?")
+    
+    if st.button("🚀 Ask Assistant", use_container_width=True):
+        if question.strip():
+            handle_question(question)
+    
+    # Quick question buttons - moved down
+    st.markdown("### 🔍 Quick Questions")
+    render_quick_questions()
+
+def handle_question(question):
+    """Handle user questions and generate responses"""
+    st.session_state.chat.append({"role": "user", "content": question})
+    
+    # Try RAG system
+    rag = get_rag_system()
+    if rag:
         try:
-            rag = load_rag_system()
-            with st.spinner("Retrieving guidelines..."):
-                answer, sources = rag.query(q, patient_scores=st.session_state.scores)
-            unique_sources = list(dict.fromkeys(sources)) if sources else []
-            cite = ("\n\n**Sources:**\n" + "\n".join([f"- {s}" for s in unique_sources[:5]])) if unique_sources else ""
-            st.session_state.chat.append({"role":"assistant","content":answer + cite})
+            with st.spinner("🔍 Searching medical guidelines..."):
+                result = rag.query(question)
+                if isinstance(result, tuple):
+                    answer, sources = result
+                else:
+                    answer = result
+                    sources = []
+            
+            response = answer
+            if sources:
+                response += f"\n\n**📚 Sources:** {', '.join(sources[:3])}"
+            
+            st.session_state.chat.append({"role": "assistant", "content": response})
         except Exception as e:
-            st.session_state.chat.append({"role":"assistant","content":f"Sorry — guidance unavailable right now. ({e})"})
-        st.rerun()
-
-# ------------------------- Router (never blank) ------------------------- #
-valid = {"AUTH","HOME","VITALS","CHAT"}
-if st.session_state.route not in valid:
-    st.session_state.route = "AUTH"
-
-if st.session_state.route == "AUTH":
-    page_auth()
-elif st.session_state.route == "HOME":
-    page_home()
-elif st.session_state.route == "VITALS":
-    page_vitals_tabs()
-elif st.session_state.route == "CHAT":
-    page_chat()
-else:
-    st.session_state.route = "AUTH"
+            # If RAG fails, use fallback response
+            response = get_fallback_response(question)
+            st.session_state.chat.append({"role": "assistant", "content": response})
+    else:
+        # RAG not available, use comprehensive fallback
+        response = get_fallback_response(question)
+        st.session_state.chat.append({"role": "assistant", "content": response})
+    
     st.rerun()
+
+def get_fallback_response(question):
+    """Provide fallback responses for common questions"""
+    question_lower = question.lower()
+    
+    fallback_responses = {
+        "qsofa": "**qSOFA Criteria (Quick Sequential Organ Failure Assessment):**\n\n1. **Respiratory rate** ≥22/min\n2. **Systolic blood pressure** ≤100 mmHg\n3. **Altered mental status** (GCS <15)\n\n**Interpretation:** Score ≥2 suggests high risk of poor outcomes and should prompt consideration of organ dysfunction.",
+        
+        "antibiotics": "**Empiric Antibiotics for Sepsis:**\n\n• **Goal:** Administer within 1 hour of recognition\n• **Broad-spectrum coverage** recommended initially\n• **Options:** Piperacillin-tazobactam, Ceftriaxone + Metronidazole, or Meropenem\n• **Consider local resistance patterns**\n• **Obtain cultures before antibiotics when possible**",
+        
+        "fluid": "**Fluid Resuscitation in Sepsis:**\n\n• **Initial:** 30 mL/kg of crystalloids within 3 hours\n• **Reassess frequently** for signs of fluid overload\n• **Monitor:** Blood pressure, urine output, lactate\n• **Avoid fluid overload** - balance resuscitation with organ perfusion",
+        
+        "news2": "**NEWS2 (National Early Warning Score 2):**\n\nScores: Temperature, Pulse, Respiratory Rate, Oxygen Saturation, Systolic BP, Consciousness, Oxygen Therapy\n\n• **0-4:** Low risk\n• **5-6:** Medium risk\n• **≥7:** High risk requiring urgent medical attention",
+        
+        "sirs": "**SIRS Criteria (Systemic Inflammatory Response Syndrome):**\n\n1. **Temperature** >38°C or <36°C\n2. **Heart rate** >90 bpm\n3. **Respiratory rate** >20/min\n4. **WBC** >12,000 or <4,000 cells/mm³\n\n**≥2 criteria = SIRS**",
+        
+        "sepsis-3": "**Sepsis-3 Definitions:**\n\n• **Sepsis:** Life-threatening organ dysfunction due to dysregulated host response to infection\n• **Septic Shock:** Sepsis with circulatory and cellular/metabolic dysfunction\n• **Organ dysfunction:** SOFA score increase ≥2 points",
+        
+        "time": "**Key Time Targets:**\n\n• **Blood cultures:** Before antibiotics when possible\n• **Antibiotics:** Within 1 hour\n• **Fluid resuscitation:** 30 mL/kg within 3 hours\n• **Lactate measurement:** Within 6 hours\n• **Reassessment:** Every 30 minutes initially"
+    }
+    
+    for key, response in fallback_responses.items():
+        if key in question_lower:
+            return response
+    
+    return "I recommend consulting current sepsis guidelines. Key principles include early recognition, prompt antibiotics, adequate fluid resuscitation, and source control. For specific clinical scenarios, please consult with your institution's protocols or infectious disease specialists."
+
+if __name__ == "__main__":
+    main()

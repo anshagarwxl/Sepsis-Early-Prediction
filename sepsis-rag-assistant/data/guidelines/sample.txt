@@ -1,0 +1,4 @@
+Sepsis quick guide:
+- Suspect sepsis in infection with organ dysfunction.
+- qSOFA criteria: RR >= 22/min, SBP <= 100 mmHg, altered mentation.
+- Early actions: obtain cultures, measure lactate, start broad-spectrum antibiotics, give IV fluids.
