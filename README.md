@@ -1,64 +1,140 @@
 # 🩺 Sepsis Early Warning RAG Assistant
 
-A lightweight AI-powered assistant that combines **clinical risk scoring** and **retrieval-augmented generation (RAG)** to support frontline healthcare workers in the **early detection and management of sepsis**.
+A lightweight AI-powered clinical decision support tool that combines risk scoring and retrieval-augmented generation (RAG) to assist healthcare workers in the early detection and management of **sepsis**.
+
+<br>
+
+⚠️ **Status:** This is a **Work in Progress (WIP)** project and is in its final development phase. Most core features are functional, with deployment and UI refinements in progress.
 
 ---
 
 ## 🚨 Problem Statement
 
-- Sepsis is a **life-threatening syndrome** caused by the body’s extreme response to infection.  
-- Every **hour of delayed treatment increases mortality by ~8%**.  
-- Globally, **1 in 3 patients with sepsis die**.  
-- In India, there is **only 1 doctor per 1000 people**, leading to overcrowding and diagnostic delays.  
-- Manual tools (**NEWS2, qSOFA, SIRS**) are rarely used in busy hospitals.  
+Sepsis is a life-threatening syndrome caused by the body’s extreme response to infection.
 
-👉 **Result:** Many patients slip into **septic shock** before receiving timely care.
+* Every hour of delayed treatment increases mortality by **~8%**.
+* Globally, **1 in 3** patients with sepsis die.
+* In India, there is only **1 doctor per 1000 people**, leading to overcrowding and diagnostic delays.
+* Manual scoring tools (NEWS2, qSOFA, SIRS) are **underutilized** in busy hospitals, leading to late detection.
+
+**Result:** Many patients slip into septic shock before timely care is provided, increasing mortality and ICU burden.
 
 ---
 
 ## 💡 Solution
 
-The **Sepsis Early Warning RAG Assistant** is a **Streamlit-based app** that enables clinicians to:
+The Sepsis Early Warning RAG Assistant provides an end-to-end digital solution for clinicians:
 
-- ✅ Enter patient vitals (temperature, HR, BP, SpO₂, consciousness, WBC).  
-- ✅ Instantly calculate sepsis risk scores: **NEWS2, qSOFA, SIRS**.  
-- ✅ Cluster patients into risk profiles using **KMeans**.  
-- ✅ Ask clinical questions → receive **guideline-grounded answers with citations** (via RAG).  
+✅ **Enter patient vitals** (Temp, HR, BP, SpO₂, consciousness, WBC)  
+✅ **Automatically calculate risk scores** — NEWS2, qSOFA, SIRS  
+✅ **Cluster patients into risk categories** using ML (KMeans)  
+✅ **Ask clinical questions** — get guideline-grounded answers with citations (via RAG)
 
-**Workflow:**  
-`Vitals ➝ Scores + Cluster ➝ Clinical Question ➝ Evidence-based Recommendation`
+**Workflow:** Vitals ➝ Risk Scores + Clustering ➝ Clinical Question ➝ Evidence-based Recommendation
+
+This helps clinicians prioritize high-risk patients, reduce time to diagnosis, and follow evidence-based treatment guidelines.
 
 ---
 
 ## 🛠 Tech Stack
 
-- **Frontend:** Streamlit (Python UI)  
-- **Risk Scoring:** Pure Python implementations of NEWS2, qSOFA, SIRS  
-- **ML Profiling:** KMeans clustering + StandardScaler  
-- **RAG Pipeline:**  
-  - Sentence Transformers (`all-MiniLM-L6-v2`) for embeddings  
-  - FAISS vector database for fast retrieval  
-  - OpenAI GPT-3.5 for generation (grounded in guidelines)  
-- **Data Sources:** WHO, Surviving Sepsis Campaign, CDC guideline PDFs  
+| Layer | Tools / Libraries |
+| :--- | :--- |
+| **Frontend** | Streamlit (Python-based UI) |
+| **Risk Scoring** | Custom Python implementations of NEWS2, qSOFA, SIRS |
+| **Machine Learning** | KMeans clustering + StandardScaler for patient profiling |
+| **RAG Pipeline** | SentenceTransformers (all-MiniLM-L6-v2), FAISS vector DB, OpenAI GPT-3.5 |
+| **Data Sources** | WHO, Surviving Sepsis Campaign, CDC Guidelines |
+| **Config & Secrets** | .env file for API keys and configs |
 
 ---
 
 ## 📂 Project Structure
 
-```bash
 sepsis-rag-assistant/
-├── app.py                # Streamlit app (main entry)
+├── app.py                # Main Streamlit app entry point
 ├── scoring.py            # NEWS2, qSOFA, SIRS scoring functions
 ├── rag_system.py         # RAG implementation (FAISS + OpenAI)
-├── data_prep.py          # Preprocess guidelines → embeddings + FAISS
+├── data_prep.py          # Preprocess guidelines → embeddings + FAISS index
 ├── requirements.txt      # Dependencies
 ├── config/
-│   └── settings.py       # Config loader (.env for OpenAI key)
+│   └── settings.py       # Config loader & OpenAI key handling
 ├── data/
 │   ├── guidelines/       # Raw guideline PDFs
-│   └── processed/        # FAISS index + chunks/sources
+│   └── processed/        # FAISS index, chunks, and metadata
 └── README.md             # Project documentation
-```
-## How to clone this Repository? Just copy the command below
 
-[git clone https://github.com/<your-username>/sepsis-rag-assistant.git](https://github.com/anshagarwxl/Sepsis-Early-Prediction)
+⚡ Quickstart (Local Setup)
+1️⃣ Clone Repository
+git clone https://github.com/<your-username>/sepsis-rag-assistant.git
+cd sepsis-rag-assistant
+
+2️⃣ Create Virtual Environment & Install Dependencies
+python3 -m venv venv
+source venv/bin/activate      # For Mac/Linux
+venv\Scripts\activate         # For Windows
+
+pip install -r requirements.txt
+
+3️⃣ Set Environment Variables
+
+Create a .env file in the root folder and add:
+
+OPENAI_API_KEY=your_openai_api_key_here
+
+4️⃣ Preprocess Guidelines (Build FAISS Index)
+python data_prep.py
+
+5️⃣ Run the App
+streamlit run app.py
+
+
+The app will open in your browser at http://localhost:8501.
+
+🎯 Key Features
+
+Risk Scoring: Calculates NEWS2, qSOFA, and SIRS instantly.
+
+Patient Profiling: Clusters patients into Low/Medium/High risk using ML.
+
+RAG-Powered Q&A: Ask clinical questions, get AI-generated responses grounded in official guidelines with source links.
+
+Lightweight & Fast: Runs locally with minimal setup, suitable for low-resource environments.
+
+WIP: UI enhancements and cloud deployment are currently under development.
+
+🖼 Example Use Case
+Input (Vitals)	Output
+Temp: 39°C, HR: 120, BP: 85/50, SpO₂: 90%, WBC: 18k	NEWS2 = High Risk (8), qSOFA = 2, SIRS = Positive → High Risk Alert
+Q: "What is the first-line antibiotic for septic shock?"	AI: "According to the Surviving Sepsis Campaign, initiate broad-spectrum IV antibiotics within the first hour..." (with source citation)
+
+🗺 Roadmap
+
+ Implement risk scoring functions
+
+ Build FAISS-based RAG pipeline
+
+ Integrate OpenAI GPT for answer generation
+
+ Add alert dashboard for multiple patients
+
+ Enable offline mode with local LLM
+
+ Deploy to cloud (Streamlit Community Cloud / Hugging Face Spaces)
+
+👥 Team Members
+
+This project is built with ❤️ by:
+
+Ansh Agarwal 
+
+Adithya S 
+
+Kanishk Jaiswal  
+
+Sayan Basu 
+
+
+📜 License
+
+This project is licensed under the MIT License — you are free to use, modify, and distribute with attribution.
