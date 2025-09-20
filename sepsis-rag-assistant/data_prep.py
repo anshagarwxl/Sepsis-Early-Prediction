@@ -46,15 +46,14 @@ class DocumentProcessor:
         self.encoder = SentenceTransformer(model_name)
         
     def load_documents(self, data_dir: str = "data") -> List[Tuple[str, str]]:
-
-         """Load documents from data directory.
-
+        """Load documents from data directory.
+        
         Returns:
             List of (text_content, source_path) tuples
         """
         documents = []
         data_path = Path(data_dir)
-
+        
         # Look for text files
         for file_path in data_path.rglob("*.txt"):
             try:
@@ -65,10 +64,12 @@ class DocumentProcessor:
                     logger.info(f"Loaded: {file_path}")
             except Exception as e:
                 logger.warning(f"Failed to load {file_path}: {e}")
+        
+        # If no txt files found, create sample data
         if not documents:
             logger.warning("No text files found. Creating sample sepsis data...")
             documents = self._create_sample_data()
-    
+        
         return documents
     
     def _create_sample_data(self) -> List[Tuple[str, str]]:
