@@ -89,11 +89,19 @@ class SepsisRAG:
             sources_path = os.path.join(self.data_dir, "sources.pkl")
             with open(sources_path, "rb") as f:
                 self.sources = pickle.load(f)
-            
-            # Load metadata
+
+            # Load metadata and perform the synchronization check
             meta_path = os.path.join(self.data_dir, "meta.json")
             with open(meta_path, "r") as f:
                 self.meta = json.load(f)
+
+            index_model = self.meta.get("model_name")
+            if index_model != self.model_name:
+                logger.warning(
+                    f"!! MODEL MISMATCH !! Index was built with '{index_model}', "
+                    f"but this RAG system is hardcoded to use '{self.model_name}'. "
+                    f"Results may be inaccurate."
+                )
             
             logger.info(f"RAG system loaded successfully:")
             logger.info(f"  - {len(self.chunks)} text chunks loaded")
