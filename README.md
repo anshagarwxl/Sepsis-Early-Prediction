@@ -72,6 +72,14 @@ sepsis-rag-assistant/
 └── README.md             # Project documentation
 ```
 
+---
+## 👥 Team Members
+
+<p align="center">
+    <span>Ansh Agarwal</span> &nbsp; &bull; &nbsp; <span>Adithya S</span> &nbsp; &bull; &nbsp; <span>Kanishk Jaiswal</span> &nbsp; &bull; &nbsp; <span>Sayan Basu</span>
+</p>
+
+
 📜 License
 
 This project is licensed under the MIT License — you are free to use, modify, and distribute with attribution.
