@@ -80,6 +80,3 @@ sepsis-rag-assistant/
 </p>
 
 
-📜 License
-
-This project is licensed under the MIT License — you are free to use, modify, and distribute with attribution.
