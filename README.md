@@ -8,7 +8,7 @@ A lightweight AI-powered clinical decision support tool that combines risk scori
 
 ---
 
-## 🌟 Origin Story & User Persona  
+## 🌱 Origin Story & User Persona  
 
 **The Origin Story:**  
 Born from a frustration with diagnostic delays and the tragic outcomes of late sepsis detection, this project was envisioned to put a life-saving tool directly into the hands of frontline healthcare workers.  
