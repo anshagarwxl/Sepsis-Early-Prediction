@@ -8,6 +8,16 @@ A lightweight AI-powered clinical decision support tool that combines risk scori
 
 ---
 
+## 🌟 Origin Story & User Persona  
+
+**The Origin Story:**  
+Born from a frustration with diagnostic delays and the tragic outcomes of late sepsis detection, this project was envisioned to put a life-saving tool directly into the hands of frontline healthcare workers.  
+
+**User Persona:**  
+Imagine a busy ER. A new patient arrives, vitals are entered, and within seconds, the system flags a **"HIGH RISK"** alert. Instead of scrambling, the clinician asks a simple question and gets an immediate, evidence-based recommendation, cutting minutes off a critical diagnosis and potentially saving a life.
+
+---
+
 ## 🚨 Problem Statement
 
 Sepsis is a life-threatening syndrome caused by the body’s extreme response to infection.
@@ -57,6 +67,12 @@ To fix the project structure image to a proper and readable format, you need to 
 
 Here is the corrected, well-formatted project structure that you can copy and paste into your GitHub README file. It uses proper indentation to show the hierarchy of files and folders.
 
+To fix the project structure image to a proper and readable format, you need to use a tree-like hierarchy that's easily understood and commonly used in README files. The provided image shows a flattened, linear structure that's difficult to parse.
+
+## 📂 Corrected Project Structure
+
+Here is the corrected, well-formatted project structure that you can copy and paste into your GitHub README file. It uses proper indentation to show the hierarchy of files and folders.
+
 ```
 sepsis-rag-assistant/
 ├── app.py                # Main Streamlit app entry point
@@ -78,5 +94,3 @@ sepsis-rag-assistant/
 <p align="center">
     <span>Ansh Agarwal</span> &nbsp; &bull; &nbsp; <span>Adithya S</span> &nbsp; &bull; &nbsp; <span>Kanishk Jaiswal</span> &nbsp; &bull; &nbsp; <span>Sayan Basu</span>
 </p>
-
-
