@@ -70,8 +70,7 @@ sepsis-rag-assistant/
 │   ├── guidelines/       # Raw guideline PDFs
 │   └── processed/        # FAISS index, chunks, and metadata
 └── README.md             # Project documentation
-
-
+```
 
 📜 License
 
