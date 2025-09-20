@@ -61,4 +61,4 @@ sepsis-rag-assistant/
 ```
 ## How to clone this Repository? Just copy the command below
 
-git clone https://github.com/<your-username>/sepsis-rag-assistant.git
+[git clone https://github.com/<your-username>/sepsis-rag-assistant.git](https://github.com/anshagarwxl/Sepsis-Early-Prediction)
