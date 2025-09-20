@@ -51,6 +51,13 @@ This helps clinicians prioritize high-risk patients, reduce time to diagnosis, a
 
 ## 📂 Project Structure
 
+To fix the project structure image to a proper and readable format, you need to use a tree-like hierarchy that's easily understood and commonly used in README files. The provided image shows a flattened, linear structure that's difficult to parse.
+
+## 📂 Corrected Project Structure
+
+Here is the corrected, well-formatted project structure that you can copy and paste into your GitHub README file. It uses proper indentation to show the hierarchy of files and folders.
+
+```
 sepsis-rag-assistant/
 ├── app.py                # Main Streamlit app entry point
 ├── scoring.py            # NEWS2, qSOFA, SIRS scoring functions
@@ -63,6 +70,7 @@ sepsis-rag-assistant/
 │   ├── guidelines/       # Raw guideline PDFs
 │   └── processed/        # FAISS index, chunks, and metadata
 └── README.md             # Project documentation
+
 
 
 📜 License
